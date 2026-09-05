@@ -2273,17 +2273,60 @@ def _build_idf(docs):
     default_idf = math.log(n_docs + 1) + 1.0  # an n-gram never seen in the known vocabulary --
     return idf, default_idf                    # treated as maximally distinctive, not zero
 
+# NEW (fix, at explicit request -- "parse what the human actually said more richly"): plain bag-of-
+# n-grams treats "you understand yourself" and "you DON'T understand yourself" as nearly the same
+# vector -- the negation word itself isn't a stopword, so it just adds noise of its own, while the real
+# content word ("understand") still contributes its full, unflipped weight either way. Real negation
+# handling (same trick used in bag-of-words sentiment analysis: Das & Chen 2001, Pang et al. 2002) flips
+# the SIGN of whatever a negation cue scopes over, so the prompt lands on the opposite side of concept
+# space from its un-negated twin instead of nearly the same side. NEGATION_WINDOW caps how many words
+# after a cue keep getting flipped (negation scope doesn't run to the end of the sentence in practice --
+# "not X but Y" shouldn't flip Y too), and a stopword inside that window still counts against it (it's
+# skipped for embedding either way, but the cue's reach shouldn't be extended by hopping over "the"/"a").
+NEGATION_WORDS = {"not", "no", "never", "none", "nothing", "nobody", "without", "cannot",
+                   "dont", "doesnt", "didnt", "cant", "wont", "isnt", "arent", "wasnt", "werent",
+                   "hasnt", "havent", "hadnt", "wouldnt", "shouldnt", "couldnt", "neither", "nor"}
+NEGATION_WINDOW = 3  # how many real (non-stopword) content words after a cue get sign-flipped
+
 def embed_text(s, idf=None, default_idf=1.0):
     """Locate a phrase in R^CONCEPT_DIM: character n-grams of its content
     words, each hashed to a dimension+sign and weighted by rarity (idf) before
     summing, then L2-normalized. idf=None (used only while bootstrapping the
-    idf table itself) falls back to uniform weight 1.0 per gram."""
+    idf table itself) falls back to uniform weight 1.0 per gram. Content words
+    inside a negation cue's scope (see NEGATION_WORDS/NEGATION_WINDOW above)
+    contribute with a FLIPPED sign, so a negated phrase lands on the opposite
+    side of concept space from its affirmative twin instead of beside it."""
     v = np.zeros(CONCEPT_DIM)
-    for w in _content_words(s):
+    words = _strip_accents(_PUNCT_RE.sub("", s.lower())).split()  # same normalization _content_words
+                                                                    # uses, kept here (rather than just
+                                                                    # calling _content_words) because
+                                                                    # negation scope-tracking needs
+                                                                    # stopwords' POSITIONS preserved,
+                                                                    # not just the final filtered list
+    kept_any = False
+    neg_left = 0
+    for w in words:
+        if w in NEGATION_WORDS:
+            neg_left = NEGATION_WINDOW  # (re)start the scope -- a second cue just extends/refreshes it
+            continue
+        if w in STOPWORDS:
+            continue  # dropped either way; scope isn't consumed by hopping over a stopword (see docstring)
+        kept_any = True
+        sign_flip = -1.0
+        if neg_left <= 0:
+            sign_flip = 1.0
+        else:
+            neg_left -= 1
         for g in _char_grams(w):
             idx, sign = _gram_hash(g)
             weight = 1.0 if idf is None else idf.get(g, default_idf)
-            v[idx] += sign * weight
+            v[idx] += sign_flip * sign * weight
+    if not kept_any:  # mirrors _content_words' own fallback: an all-stopword/all-negation-cue phrase
+        for w in words:  # still needs SOMETHING to embed rather than returning the zero vector
+            for g in _char_grams(w):
+                idx, sign = _gram_hash(g)
+                weight = 1.0 if idf is None else idf.get(g, default_idf)
+                v[idx] += sign * weight
     n = np.linalg.norm(v)
     return v / n if n > EPS else v
 
@@ -3430,6 +3473,24 @@ CONCEPT_BANK = dict(
         ],
         answer=None),
 )
+
+# NEW (fix, at explicit request -- "parse what was asked more richly, not just route to a bucket"):
+# each hand-authored concept's own seed phrases already imply a Li & Roth answer TYPE (see
+# detect_expected_answer_type/WH_TYPE_MAP/ANSWER_TYPE_WORDS above, which until now only ever fed a
+# rerank bonus on already-GENERATED candidates, never the routing decision that picks a concept in the
+# first place) -- "how many nodes..." (architecture) wants a NUMBER, "why do you exist" (purpose) wants
+# a REASON, "who/what are you" (identity) wants a PERSON/ENTITY, "how are you now" (current_state) leans
+# on NOW/TIME. Deliberately only covers the types ANSWER_TYPE_WORDS actually defines indicator sets for
+# (numero/tiempo/lugar/persona/razon, not entidad/manera -- same partial-coverage philosophy as
+# ANSWER_TYPE_WORDS itself) and deliberately omits consciousness/how_it_works/will rather than force a
+# guess with no real indicator set behind it. Used by semantic_route as a small tiebreak nudge, not a
+# hard override -- a prompt whose semantic content clearly points elsewhere should still win.
+_CONCEPT_ANSWER_TYPE_HINT = {
+    "identity": "persona", "architecture": "numero", "purpose": "razon", "current_state": "tiempo",
+}
+ROUTE_TYPE_BONUS_WEIGHT = 0.08  # small on purpose -- this breaks near-ties between close-scoring
+                                # concepts, it must never be able to drag routing onto a concept whose
+                                # actual text similarity was clearly weaker
 
 _IDF_DOCS = [c["seed_phrases"] for c in CONCEPT_BANK.values()] + [c["keywords"] for c in CLUSTERS.values()]
 _IDF, _DEFAULT_IDF = _build_idf(_IDF_DOCS)
@@ -5028,79 +5089,171 @@ def symbolic_to_english(line):
     if stripped and stripped[-1] in ".!?":
         trailing = stripped[-1]
         stripped = stripped[:-1]
-    raw_tokens = [w.strip(".,!?\u00bf\u00a1") for w in stripped.split()]
-    raw_tokens = [w for w in raw_tokens if w]
+    # NEW (fix): "!" and "?" double as UNARY symbol tokens (SIGNIFICANT/UNKNOWN -- see _LANG_UNARY)
+    # AND as characters in the punctuation-stripping set below. Blindly stripping every token the same
+    # way turned a standalone "!" or "?" token into "" (dropped for being falsy), silently deleting two
+    # of the seven core-state symbols from the decoded output before Pass 1 ever saw them. Tokens that
+    # exactly match a known symbol are kept as-is; stripping only applies to stray punctuation attached
+    # to an otherwise-unrecognized word.
+    _known_syms = _LANG_OPS | _LANG_CONN | _LANG_MOD | _LANG_UNARY
+    raw_tokens = []
+    for w in stripped.split():
+        if w in _known_syms:
+            raw_tokens.append(w)
+        else:
+            w2 = w.strip(".,!?\u00bf\u00a1")
+            if w2:
+                raw_tokens.append(w2)
     if not raw_tokens:
         return line
 
-    # Pass 1: classify each token and fold MOD tokens into the immediately preceding term (as a
-    # parenthetical), so grouping below never has to special-case them.
-    items = []  # list of ("TERM", text) | ("OP", (sing, plur)) | ("CONN", text)
+    # Pass 1: classify each token. MOD tokens fold into the immediately preceding term as a PRENOMINAL
+    # adjective ("fluctuating predictability", not "predictability (fluctuating)") -- real English puts
+    # the adjective before the noun. UNARY tokens (core-state/negation: uncertain/not/significant/etc.)
+    # are kept OUT of the term stream entirely and tagged QUAL instead: these describe the whole clause's
+    # epistemic status, not one more thing in the noun list -- folding them in as if they were nouns is
+    # what produced lines like "...why, uncertain, self, mind, and now" (reads like "uncertain" is a
+    # concept alongside "self" and "mind", which it isn't).
+    items = []  # list of ("TERM", text) | ("OP", (sing, plur)) | ("CONN", text) | ("QUAL", text)
     for w in raw_tokens:
         if w in _LANG_MOD:
-            paren = f"({_MOD_PHRASE[w]})"
+            adj = _MOD_PHRASE[w]
             if items and items[-1][0] == "TERM":
-                items[-1] = ("TERM", f"{items[-1][1]} {paren}")
+                items[-1] = ("TERM", f"{adj} {items[-1][1]}")
             else:
-                items.append(("TERM", paren))
+                items.append(("TERM", adj))
         elif w in _LANG_OPS:
             items.append(("OP", _OP_PHRASE[w]))
         elif w in _LANG_CONN:
             items.append(("CONN", _CONN_PHRASE[w]))
         elif w in _LANG_UNARY:
-            items.append(("TERM", _UNARY_PHRASE[w]))
+            items.append(("QUAL", _UNARY_PHRASE[w]))
         else:
             items.append(("TERM", _NOUN_GLOSS.get(w.upper(), w.lower())))
 
-    # Pass 2: collapse consecutive TERM entries into one grouped noun phrase, remembering how many
-    # nouns went into it (for verb agreement in Pass 3).
-    groups = []  # list of ("TERMS", phrase, count) | ("OP", (sing, plur)) | ("CONN", text)
+    # Pass 2: collapse consecutive TERM entries into one grouped noun-WORD-LIST (kept as a list, not
+    # joined into a string yet -- Pass 4 below may still need to merge more words into this exact group
+    # after a neighboring fragment clause gets folded in, and you can't cleanly un-join an Oxford-comma
+    # string). QUAL entries pass through untouched -- they attach to the whole clause in Pass 3.
+    groups = []  # list of ("TERMS", [word,...], count) | ("OP", (sing, plur)) | ("CONN", text) | ("QUAL", text)
     buf = []
     for kind, val in items:
         if kind == "TERM":
             buf.append(val)
             continue
         if buf:
-            groups.append(("TERMS", _join_noun_list(buf), len(buf)))
+            groups.append(("TERMS", buf, len(buf)))
             buf = []
         groups.append((kind, val, None))
     if buf:
-        groups.append(("TERMS", _join_noun_list(buf), len(buf)))
+        groups.append(("TERMS", buf, len(buf)))
 
-    # Pass 3: assemble clauses -- an OP renders as a verb phrase (singular/plural chosen from the
-    # SUBJECT term just before it) sitting directly between two term groups; a CONN closes the current
-    # clause and joins it to the next one with "and"/"or"/";" instead of starting a disconnected
-    # sentence fragment.
-    clauses, cur, cur_count = [], [], 1
+    # Pass 3: split groups into per-clause records at each CONN boundary. A clause record keeps its
+    # segments (TERMS/OP, in order, so verb agreement can still be resolved later) and its own QUAL list,
+    # rather than pre-rendering to a string -- Pass 4 needs to still be able to reach into a clause's noun
+    # groups and add more words to them.
+    clauses, joiners = [], []  # joiners[i] is the connector between clauses[i] and clauses[i+1]
+    cur_segs, cur_quals = [], []
     for entry in groups:
         kind = entry[0]
         if kind == "CONN":
-            if cur:
-                clauses.append((" ".join(cur), entry[1]))
-            cur, cur_count = [], 1
+            clauses.append({"segs": cur_segs, "quals": cur_quals})
+            joiners.append(entry[1])
+            cur_segs, cur_quals = [], []
+            continue
+        if kind == "QUAL":
+            cur_quals.append(entry[1])
             continue
         if kind == "OP":
-            sing, plur = entry[1]
-            cur.append(plur if cur_count > 1 else sing)
+            cur_segs.append(("OP", entry[1]))
         else:  # TERMS
-            _, phrase, count = entry
-            cur.append(phrase)
-            cur_count = count
-    if cur:
-        clauses.append((" ".join(cur), None))
+            _, wordlist, count = entry
+            cur_segs.append(("TERMS", wordlist, count))
+    clauses.append({"segs": cur_segs, "quals": cur_quals})
+    # Drop any wholly-empty clause a stray double-CONN might have produced (grammar-FSM already forbids
+    # this in practice, but cheap to guard) and keep joiners aligned with what's left.
+    i = 0
+    while i < len(clauses):
+        if not clauses[i]["segs"] and not clauses[i]["quals"]:
+            del clauses[i]
+            if i < len(joiners):
+                del joiners[i]
+            elif joiners:
+                del joiners[-1]
+        else:
+            i += 1
 
-    if not clauses:
+    # Pass 4 (fix, at explicit request -- clause-joining ambiguity): a clause with NO operator at all is
+    # a bare noun phrase, not a sentence -- e.g. from "SELF & VECTOR <-> GEN", clause 1 is just "self".
+    # The old code joined it to the next clause with "and" at the TOP level ("Self and vector relates to
+    # generation"), which visually reads as a two-noun compound subject ("self and vector") but the verb
+    # right after it was picked singular, because internally it only ever agreed with "vector" -- the
+    # subject and the verb disagreed about how many nouns were actually being talked about. Fix: fold a
+    # no-operator clause's nouns directly INTO the noun group they're actually standing next to (the
+    # following clause's subject if there is one, else the previous clause's final noun group) so the
+    # word count used for verb agreement includes them for real, instead of merely sitting beside them.
+    def _has_op(c):
+        return any(seg[0] == "OP" for seg in c["segs"])
+
+    i = 0
+    while i < len(clauses) and len(clauses) > 1:
+        if _has_op(clauses[i]):
+            i += 1
+            continue
+        frag_words = [w for seg in clauses[i]["segs"] if seg[0] == "TERMS" for w in seg[1]]
+        frag_quals = clauses[i]["quals"]
+        if i + 1 < len(clauses):
+            nxt = clauses[i + 1]
+            for si, seg in enumerate(nxt["segs"]):
+                if seg[0] == "TERMS":
+                    merged = frag_words + seg[1]
+                    nxt["segs"][si] = ("TERMS", merged, len(merged))
+                    break
+            else:
+                nxt["segs"].insert(0, ("TERMS", frag_words, len(frag_words)))
+            nxt["quals"] = frag_quals + nxt["quals"]
+            del clauses[i]
+            del joiners[i]
+            continue  # re-check at same i -- now the (possibly still-fragmentary) next clause
+        else:
+            prev = clauses[i - 1]
+            for si in range(len(prev["segs"]) - 1, -1, -1):
+                if prev["segs"][si][0] == "TERMS":
+                    merged = prev["segs"][si][1] + frag_words
+                    prev["segs"][si] = ("TERMS", merged, len(merged))
+                    break
+            else:
+                prev["segs"].append(("TERMS", frag_words, len(frag_words)))
+            prev["quals"] = prev["quals"] + frag_quals
+            del clauses[i]
+            del joiners[i - 1]
+            i -= 1
+
+    # Pass 5: render each surviving clause -- TERMS groups join with an Oxford comma, an OP renders as a
+    # verb phrase agreeing with whichever TERMS group sat immediately before it, and any QUAL words land
+    # as a trailing parenthetical -- then stitch clauses together with each one's own captured connector.
+    def _render_clause(c):
+        pieces, last_count = [], 1
+        for seg in c["segs"]:
+            if seg[0] == "TERMS":
+                _, wordlist, count = seg
+                pieces.append(_join_noun_list(wordlist))
+                last_count = count
+            else:  # OP
+                sing, plur = seg[1]
+                pieces.append(plur if last_count > 1 else sing)
+        text = " ".join(pieces)
+        if c["quals"]:
+            text = f"{text} ({_join_noun_list(c['quals'])})"
+        return text
+
+    clause_texts = [_render_clause(c) for c in clauses if c["segs"] or c["quals"]]
+    if not clause_texts:
         return line
-
-    sentence = clauses[0][0]
-    for text, joiner in clauses[1:]:
-        sentence = f"{sentence} {clauses[clauses.index((text, joiner)) - 1][1] or 'and'} {text}"
-    # ^ stitches using each clause's OWN trailing connector word, captured alongside it above
-    parts = [clauses[0][0]]
-    for i in range(1, len(clauses)):
-        connector = clauses[i - 1][1] or "and"
-        parts.append(connector)
-        parts.append(clauses[i][0])
+    parts = [clause_texts[0]]
+    for i in range(1, len(clause_texts)):
+        parts.append(joiners[i - 1] if i - 1 < len(joiners) and joiners[i - 1] else "and")
+        parts.append(clause_texts[i])
     sentence = " ".join(parts)
 
     sentence = sentence[0].upper() + sentence[1:]
@@ -5183,6 +5336,15 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
                                       # feeds into in _select_best)
     lang_grammar = _LangGrammarState()  # NEW: grammar-constrained decoding state for Lang -- see class
                                          # docstring above
+    saw_op = False  # NEW (fix, at explicit request -- "make it speak English" pt.2): tracks whether a
+                     # real relational operator (the thing symbolic_to_english renders as the VERB --
+                     # "leads to"/"relates to"/etc.) has been emitted yet in this line. Without this, a
+                     # structurally-legal-per-FSM line could be nothing but a run of NOUN/MOD tokens
+                     # (</s> is allowed any time can_close_sentence() is true, which only checks the LAST
+                     # token, not whether an OP ever appeared at all) -- which decodes to a bare noun list
+                     # with no verb, e.g. "Predictability (fluctuating), language (moderate), vector...".
+                     # Gating </s> on this the same way GEN_WORD_RANGE[0]/can_close_sentence already do
+                     # forces every generated line to contain a subject-verb-object shape once decoded.
     for _ in range(n_words):
         context_vec = normalize(context_sum / context_n)  # NEW: the "one big thing" -- whole history so far
         # WAS: candidates = bigram.get(prev) or unigram -- a lookup keyed on exactly the ONE previous
@@ -5241,6 +5403,10 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
         # on other FSM-guarded paths.
         if "</s>" in cand_words and not lang_grammar.can_close_sentence():
             combined[cand_words.index("</s>")] = 0.0
+        # NEW (fix, at explicit request -- "make it speak English" pt.2): never end the line before it
+        # contains at least one operator -- see saw_op docstring above.
+        if "</s>" in cand_words and not saw_op:
+            combined[cand_words.index("</s>")] = 0.0
         total = combined.sum()
         # FIX (NaN-weight collapse -- root cause of the "Probabilities contain NaN" crash): same issue as
         # the fallback in _dual_transformer_word_step above -- `total > EPS` is False whenever total is
@@ -5270,6 +5436,8 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
         _logprob_n += 1
         out.append(nxt)
         lang_grammar.advance(nxt)  # NEW: update the Lang FSM with the token actually chosen
+        if lang_grammar.last == lang_grammar.OP:  # NEW: see saw_op docstring above
+            saw_op = True
         _bigrams_used.add((prev, nxt))
         prev = nxt
         if mind is not None:  # NEW (per-token grounding): write-back fires HERE, every token, not just
@@ -5404,6 +5572,14 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
     discovered topic's word list if THAT'S what won, else None (routed via
     the hand-authored bank as before)."""
     v = embed_text(prompt, _IDF, _DEFAULT_IDF)
+    # NEW (fix, at explicit request -- "parse what was asked more richly"): the Li & Roth wh-type
+    # classifier (detect_expected_answer_type/ANSWER_TYPE_WORDS) already existed but only ever reranked
+    # already-generated candidates, never influenced which CONCEPT got routed to in the first place --
+    # so "why do you exist" and "what are you" could both land on whichever concept happened to be
+    # nearest in raw embedding distance, with no credit for one of them actually being a why-question.
+    # Computed once here and folded in as a small per-concept bonus below (see _CONCEPT_ANSWER_TYPE_HINT
+    # / ROUTE_TYPE_BONUS_WEIGHT) -- a tiebreak nudge, not a hard override.
+    expected_type = detect_expected_answer_type(prompt)
     # NEW (agency loop): while a goal is active, weight candidates toward whichever concept/mood has
     # historically co-occurred with THAT axis being strong (axis_profile[name][goal_axis] -- the same
     # learned per-name axis profile want_align_score already reads, just indexed by the currently-
@@ -5416,6 +5592,10 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
             return 0.5
         profile = axis_profile.get(name)
         return float(profile.get(goal_axis, 0.5)) if profile is not None else 0.5
+    def _type_bonus(kind_label, name):
+        if expected_type is None or kind_label != "concept":
+            return 0.0
+        return ROUTE_TYPE_BONUS_WEIGHT if _CONCEPT_ANSWER_TYPE_HINT.get(name) == expected_type else 0.0
     text_w = 1 - WANT_ALIGN_WEIGHT - GOAL_ALIGN_WEIGHT
     best_kind, best_name, best_score, best_text, best_topic = None, None, 0.0, 0.0, None
     for kind_label, bank in (("concept", CONCEPT_ANCHORS), ("mood", MOOD_ANCHORS)):
@@ -5424,14 +5604,14 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
             text_score = float(np.exp(-GROUND_LAM * np.sum((v - anchor_vec) ** 2)))
             want_score = want_align_score(name, axis_profile, mind.want_ema)
             combined = (text_w * text_score + WANT_ALIGN_WEIGHT * want_score
-                        + GOAL_ALIGN_WEIGHT * _goal_align(name))
+                        + GOAL_ALIGN_WEIGHT * _goal_align(name) + _type_bonus(kind_label, name))
             if combined > best_score:
                 best_kind, best_name, best_score, best_text, best_topic = kind_label, name, combined, text_score, None
     for kind_label, name, anchor_vec, topic_words in (topic_anchors or []):
         text_score = float(np.exp(-GROUND_LAM * np.sum((v - anchor_vec) ** 2)))
         want_score = want_align_score(name, axis_profile, mind.want_ema)
         combined = (text_w * text_score + WANT_ALIGN_WEIGHT * want_score
-                    + GOAL_ALIGN_WEIGHT * _goal_align(name))
+                    + GOAL_ALIGN_WEIGHT * _goal_align(name) + _type_bonus(kind_label, name))
         if combined > best_score:
             best_kind, best_name, best_score, best_text, best_topic = kind_label, name, combined, text_score, topic_words
     if best_score < CONCEPT_GROUNDING_THRESHOLD:
