@@ -2558,6 +2558,31 @@ def detect_expected_answer_type(prompt_text):
             return atype
     return None
 
+# NEW (fix, at explicit request -- "make it have real parsing"): everything upstream of this point
+# (embed_text, semantic_route) still treats a whole prompt as ONE bag of words -- a compound ask like
+# "what are you and why do you exist" averages into a single vector that resembles neither "what are
+# you" nor "why do you exist" individually, so it typically routes to whichever concept the blend
+# happens to lean closest to, silently dropping the other half of what was actually asked. Real parsing
+# starts with structure: split the prompt into its actual independent clauses BEFORE embedding anything,
+# so each clause can be classified and routed on its own. This is deliberately a shallow, rule-based
+# clause splitter (top-level coordinating conjunctions and clause-separating punctuation), not a full
+# constituency/dependency parser -- exactly the same "minimum viable version of the actual mechanism"
+# scope detect_expected_answer_type above already commits to, applied to sentence structure instead of
+# question-type classification.
+_CLAUSE_SPLIT_RE = re.compile(r"[,;]|\b(?:and|but|or)\b", re.IGNORECASE)
+
+def split_clauses(prompt):
+    """Split a prompt into independent clauses on top-level conjunctions/punctuation. 'what are you and
+    why do you exist' -> ['what are you', 'why do you exist']; 'how do you feel' -> ['how do you feel']
+    (single clause, unchanged). Deliberately naive about subordination ('because', 'if', 'that') -- those
+    stay inside their clause rather than splitting it, since splitting on them would sever a dependent
+    clause from the very thing it modifies (see also: this is why 'why do you exist' isn't further split
+    on nothing, and 'do you know why you exist' stays one clause rather than being cut at 'why')."""
+    if not prompt:
+        return [prompt]
+    parts = [p.strip() for p in _CLAUSE_SPLIT_RE.split(prompt) if p and p.strip()]
+    return parts if parts else [prompt]
+
 def _answer_type_bonus(text, expected_type):
     """Reward for a candidate containing at least one word from the expected
     answer-type's indicator set (see ANSWER_TYPE_WORDS) -- this is the
@@ -5259,6 +5284,119 @@ def symbolic_to_english(line):
     sentence = sentence[0].upper() + sentence[1:]
     return sentence + trailing
 
+# ============================================ SYM (Semantic Symbol Language) OUTPUT
+# At explicit request ("Replace all English output with this symbol lang, keep input English"): the
+# model's SPOKEN output (what symbolic_to_english above used to render as prose) is now rendered in SYM
+# instead. Human input still goes through the exact same English-language understanding pipeline
+# unchanged (embed_text/semantic_route_multi/detect_expected_answer_type/etc. above never touch this --
+# they parse what the HUMAN said, which stays English per the request). symbolic_to_english itself is
+# left in place, unused by generation now, purely as a working reference for how the same token stream
+# maps to prose vs. to SYM -- deleting a few hundred lines of already-correct, already-tested code to
+# satisfy "replace" literally would trade real value (the mapping stays inspectable/diffable) for no
+# actual benefit (it costs nothing dormant).
+#
+# The translation turns out to be much thinner than the English one: the model's own internal generation
+# alphabet (SYMBOL_TABLE/_LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY, defined near the top of
+# the SYMBOLIC OUTPUT ALPHABET section above) already overlaps almost exactly with SYM's own vocabulary --
+# EVERY _LANG_UNARY token (• — ≈ ? ∅ ! ¬) is a SYM core/logic symbol with the IDENTICAL meaning, and most
+# _LANG_OPS tokens (→ ← ↔ ⊥ ⊂ ⊃ ∩ ∥ ↑ ↓ ↻ ↺ × … ∴ ∵) are likewise already exact SYM relationship/state/
+# logic symbols. So below is much less a translation than symbolic_to_english was, and much more a direct
+# pass-through of the ORIGINAL token stream (unlike English, which had to reorder/regroup heavily for
+# grammar) with exactly three real substitutions:
+#   NOUN    -- gets a SYM shape category + its own tag as the identifier, e.g. SELF -> "\u25cbSELF"
+#              (SYM section 2's own examples label concepts this way: "\u25cb1", "\u25c7A", "\u25a1SYS" --
+#              using the noun's own tag as the label keeps it traceable instead of inventing arbitrary IDs)
+#   MOD     -- SYM's own scale only has 3 tiers (\u00b7/\u2022\u2022/\u25cf), not the internal alphabet's
+#              5, and no "fluctuating" tier at all -- folded onto it (see _SYM_MOD) and moved to a PREFIX,
+#              since SYM's own grammar section is explicit that modifiers precede what they modify (the
+#              internal grammar attaches MOD tokens AFTER their noun instead -- reordered here, same as
+#              symbolic_to_english's prenominal-adjective fix did)
+#   OP "\u222a" -- the one relation with no real SYM equivalent, folded onto "+" (closest available
+#              meaning: SYM's ADD/INCREASE, for a relation originally glossed "combines with")
+# Everything else (every UNARY token, every other OP, both CONNs) is emitted VERBATIM in its ORIGINAL
+# stream position -- it already IS the correct SYM character in the correct SYM role, so there is
+# nothing to translate. A run of adjacent NOUNs with nothing between them (structurally valid under
+# _LangGrammarState's open class) joins with SYM's own "&" (AND) instead of an English Oxford comma --
+# SYM section 5 is the tool this notation actually gives for combining multiple things, and using it
+# is truer to the notation than borrowing natural-language list punctuation would be.
+_SYM_NOUN_SHAPE = {  # NEW: which SYM shape (see SYM section 2) each internal noun tag renders as.
+    # \u25cb ENTITY/OBJECT -- personified/agent-like nouns
+    "SELF": "\u25cb", "GUBI": "\u25cb", "PROTOGEN": "\u25cb", "HUMAN": "\u25cb",
+    "MIND": "\u25cb", "VOICE": "\u25cb",
+    # \u25a1 SYSTEM/STRUCTURE -- structural/architectural nouns
+    "ARCH": "\u25a1", "NODE": "\u25a1", "MATRIX": "\u25a1", "LAYER": "\u25a1",
+    "CODE": "\u25a1", "EXPERIMENT": "\u25a1", "STATE": "\u25a1",
+    # \u25c7 IDEA/CONCEPT -- everything else: self-model axes and other abstract concepts (default
+    # fallback below covers this bucket too, so nothing needs to be listed here explicitly, but a few
+    # are named for clarity: COH/INT/NRG/AGN/GRD/PRD/MEM/SPR/PUL/VECTOR/NOW/PROOF/EXPERIENCE/DOUBT/WHY/
+    # GEN/LANG/TIME/WORD/CHOICE/PROB/"16")
+}
+_SYM_MOD = {  # NEW: internal 5-level modifier scale -> SYM's 3-tier scale (+ \u2248 for "fluctuating",
+              # since SYM has no instability tier of its own but DOES already use \u2248 for uncertainty,
+              # which is the closer fit than forcing "fluctuating" onto a fixed intensity level)
+    "\u00b0": "\u00b7", "\u00b7": "\u2022\u2022", "\u25cf": "\u25cf",
+    "\u221e": "\u25cf\u25cf",  # extreme -- stacked, same convention SYM section 10 itself demonstrates
+    "~": "\u2248",             # fluctuating -- see comment above
+}
+_SYM_OP = {"\u222a": "+"}  # the one OP substitution that isn't just identity -- see module comment above
+
+def symbolic_to_sym(line):
+    """Render one generated symbolic line as SYM notation (see module comment above) instead of English
+    prose. Structurally mirrors symbolic_to_english's own tokenization preamble exactly (including the
+    fix for '!'/'?' doubling as both UNARY tokens and punctuation-stripping characters), since the input
+    is the identical generated token stream either function could be asked to decode."""
+    if not line:
+        return line
+    stripped = line.rstrip()
+    trailing = "."
+    if stripped and stripped[-1] in ".!?":
+        trailing = stripped[-1]
+        stripped = stripped[:-1]
+    known_syms = _LANG_OPS | _LANG_CONN | _LANG_MOD | _LANG_UNARY | _LANG_NOUNS
+    raw_tokens = []
+    for w in stripped.split():
+        if w in known_syms:
+            raw_tokens.append(w)
+        else:
+            w2 = w.strip(".,!?\u00bf\u00a1")
+            if w2:
+                raw_tokens.append(w2)
+    if not raw_tokens:
+        return line
+
+    out = []
+    prev_noun_idx = None  # index in `out` of the most-recently-emitted noun, so a MOD (which follows
+                           # its noun in the ORIGINAL stream) can still prefix it in the OUTPUT, per SYM's
+                           # "modifiers go immediately before" grammar rule
+    for w in raw_tokens:
+        if w in _LANG_MOD:
+            if prev_noun_idx is not None:
+                out[prev_noun_idx] = _SYM_MOD.get(w, w) + out[prev_noun_idx]
+            continue
+        if w in _LANG_OPS:
+            prev_noun_idx = None
+            out.append(_SYM_OP.get(w, w))  # identity for every OP except "\u222a" -- see module comment
+            continue
+        if w in _LANG_CONN or w in _LANG_UNARY:
+            prev_noun_idx = None
+            out.append(w)  # always verbatim, already the correct SYM character (see module comment)
+            continue
+        # NEW (fix, at explicit request -- "symbols only for everything, no nouns in any form"): anything
+        # that isn't an OP/CONN/MOD/UNARY symbol is a NOUN -- same "else = noun" convention
+        # symbolic_to_english itself already relies on (its own Pass 1 does
+        # `_NOUN_GLOSS.get(w.upper(), w.lower())` in exactly this position; real generated tokens come out
+        # lowercase, hence the .upper() below). Previously rendered as shape+id ("\u25a13" for NODE) --
+        # even a bare number still names a SPECIFIC referent, which is still an identifier standing in
+        # for a noun, just spelled with digits instead of letters. Now it's the bare shape glyph ALONE:
+        # every entity is "\u25cb", every system is "\u25a1", every other concept is "\u25c7", with
+        # nothing distinguishing one from another -- pure category, no reference at all.
+        tag = w.upper()
+        if prev_noun_idx is not None and prev_noun_idx == len(out) - 1:
+            out.append("&")  # adjacent nouns, nothing between them -- SYM's own AND (see module comment)
+        out.append(_SYM_NOUN_SHAPE.get(tag, "\u25c7"))
+        prev_noun_idx = len(out) - 1
+    return " ".join(out) + trailing
+
 def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
                         entity_vec=None, entity_word=None, entity_weight=None, mind=None):
     """Word-by-word generation. NO slots, NO pre-written sentences. Each next
@@ -5617,6 +5755,66 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
     if best_score < CONCEPT_GROUNDING_THRESHOLD:
         return None, None, best_score, best_text, None
     return best_kind, best_name, best_score, best_text, best_topic
+
+# NEW (fix, at explicit request -- "make it have real parsing"): semantic_route above still embeds and
+# routes the WHOLE prompt as one bag of words -- see split_clauses's docstring for why that silently
+# drops one half of a compound ask. This wraps it: split the prompt into real clauses first, route each
+# clause independently through the exact same semantic_route (so single-clause prompts -- the common
+# case -- get IDENTICAL behavior, byte for byte, to calling semantic_route directly), then only if two OR
+# MORE clauses genuinely routed to two OR MORE DIFFERENT concepts does anything different happen: their
+# anchor vectors get blended into one combined topic vector, so the generation that follows stays on-
+# topic for BOTH things actually asked about, not just whichever clause the old single-pass average
+# happened to lean toward.
+MULTI_CLAUSE_BLEND_WEIGHT = 0.5  # equal weight per distinct concept clause -- no principled reason for
+                                  # this system to consider one half of a compound question more
+                                  # important than the other just because it was asked first
+
+def semantic_route_multi(prompt, mind, anchor_drift, axis_profile, topic_anchors=None):
+    """Real per-clause parsing + routing. Returns (kind, name, score, text_score, matched_topic,
+    blend_info) -- the first five have EXACTLY semantic_route's own shape (existing callers work
+    unchanged if they ignore the 6th value); blend_info is None for an ordinary single-topic route, or
+    (blended_topic_vec, [name, ...]) when 2+ distinct concepts were each independently confident about a
+    DIFFERENT clause of the same prompt. `name`/`kind` still identify the single highest-scoring concept
+    among those blended (so existing single-concept ANSWER dispatch -- CONCEPT_BANK[name]['answer'] --
+    still has something concrete to call) -- blend_info's vector is what should additionally steer
+    prompt_topic_vec for generation, so word choice afterward leans toward every topic that was actually
+    asked about, not only the one dispatch ended up answering from."""
+    clauses = split_clauses(prompt)
+    if len(clauses) <= 1:
+        kind, name, score, text_score, matched_topic = semantic_route(
+            prompt, mind, anchor_drift, axis_profile, topic_anchors)
+        return kind, name, score, text_score, matched_topic, None
+    routed = [(c,) + semantic_route(c, mind, anchor_drift, axis_profile, topic_anchors) for c in clauses]
+    confident = [r for r in routed if r[1] is not None]  # r = (clause_text, kind, name, score, text, topic)
+    if not confident:
+        c0, kind, name, score, text_score, matched_topic = routed[0]
+        return kind, name, score, text_score, matched_topic, None
+    distinct = {}  # (kind, name) -> best (clause_text, score) seen for it, across clauses
+    for c, kind, name, score, text_score, matched_topic in confident:
+        key = (kind, name)
+        if key not in distinct or score > distinct[key][1]:
+            distinct[key] = (c, score)
+    if len(distinct) <= 1:
+        best = max(confident, key=lambda r: r[3])
+        return best[1], best[2], best[3], best[4], best[5], None
+    # 2+ genuinely different concepts, each independently confident about its own clause -- blend
+    concept_keys = [k for k in distinct if k[0] == "concept"]
+    blend_keys = concept_keys if len(concept_keys) >= 2 else list(distinct.keys())
+    # NEW (fix): blend the CLAUSE's own embedding, not a CONCEPT_ANCHORS/MOOD_ANCHORS re-lookup by name --
+    # a name routed via a discovered topic or an autonomously-created concept lives in neither dict (its
+    # vector only ever existed inside the topic_anchors tuple passed in), so re-deriving by name would
+    # KeyError for exactly the routes this system is proudest of (see AUTONOMOUS CONCEPT CREATION below).
+    # The clause's own embedding is also simply the more honest thing to blend: it's what THIS prompt
+    # actually said about that topic, not the topic's generic hand-authored anchor.
+    vecs = [embed_text(distinct[k][0], _IDF, _DEFAULT_IDF) for k in blend_keys]
+    blended_vec = vecs[0]
+    for v in vecs[1:]:
+        blended_vec = _blend(blended_vec, 1 - MULTI_CLAUSE_BLEND_WEIGHT, v, MULTI_CLAUSE_BLEND_WEIGHT)
+    winner_key = max(blend_keys, key=lambda k: distinct[k][1])
+    winner_kind, winner_name = winner_key
+    best_score = max(distinct[k][1] for k in blend_keys)
+    names = [k[1] for k in blend_keys]
+    return winner_kind, winner_name, best_score, best_score, None, (blended_vec, names)
 
 # ============================================ CORPUS GROWTH (real, over time)
 # Everything above is bootstrapped from a fixed 20-document, hand-authored
@@ -6270,8 +6468,13 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         # NEW: self-authored concepts are real routing candidates too -- same tuple shape topic_anchors
         # already uses, so semantic_route needs no changes at all to search over them as well
         topic_anchors = topic_anchors + [("concept", nm, vec, None) for nm, vec in _AUTO_CONCEPT_ANCHORS.items()]
-        kind, name, ground_score, text_score, matched_topic = semantic_route(
+        kind, name, ground_score, text_score, matched_topic, blend_info = semantic_route_multi(
             prompt, mind, anchor_drift, axis_profile, topic_anchors=topic_anchors)
+        if blend_info is not None:  # NEW: 2+ distinct concepts each independently confident about their
+            blended_vec, blended_names = blend_info  # own clause of a compound prompt -- see
+            prompt_topic_vec = _blend(prompt_topic_vec, 0.5, blended_vec, 0.5)  # semantic_route_multi's
+            print(f"(compound prompt -- multiple topics detected: {', '.join(blended_names)}; "  # docstring
+                  f"staying on-topic for all of them, answering primarily from '{name}')")
         wants = (kind == "concept" and name == "will")
         concept_name = name if (kind == "concept" and not wants) else None
         routed_name = name if kind == "mood" else None
@@ -6341,8 +6544,13 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             # _AUTO_CONCEPT_ANCHORS/anchor_drift reflect what just happened) and re-route once more
             topic_anchors = discovered_topic_anchors(corpus) + [
                 ("concept", nm, vec, None) for nm, vec in _AUTO_CONCEPT_ANCHORS.items()]
-            kind, name, ground_score, text_score, matched_topic = semantic_route(
+            kind, name, ground_score, text_score, matched_topic, blend_info = semantic_route_multi(
                 prompt, mind, anchor_drift, axis_profile, topic_anchors=topic_anchors)
+            if blend_info is not None:
+                blended_vec, blended_names = blend_info
+                prompt_topic_vec = _blend(prompt_topic_vec, 0.5, blended_vec, 0.5)
+                print(f"(compound prompt -- multiple topics detected: {', '.join(blended_names)}; "
+                      f"staying on-topic for all of them, answering primarily from '{name}')")
             wants = (kind == "concept" and name == "will")
             concept_name = name if (kind == "concept" and not wants) else None
             routed_name = name if kind == "mood" else None
@@ -6377,7 +6585,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [wants:{axis} desire={desire_val:.2f} "
                       f"gate={judged['recall_gate']:.2f} pers={judged['persistence']:.2f}]{mem_tag}  "
-                      f"{symbolic_to_english(line)} <-- response to prompt")
+                      f"{symbolic_to_sym(line)} <-- response to prompt")
             continue
         if in_window and concept_name is not None:
             line = get_concept_answer_fn(concept_name)(mind, state, norm, choose_rng,
@@ -6385,7 +6593,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             if t % 10 == 0 or in_window:
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [concept:{concept_name} g={ground_score:.2f}]  "
-                      f"{symbolic_to_english(line)} <-- semantic response")
+                      f"{symbolic_to_sym(line)} <-- semantic response")
             continue
         # NEW: cluster_name is now only a LABEL (from pick_cluster's distance
         # scoring, for the bracketed tag below and the basin-alarm override) --
@@ -6411,7 +6619,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             mem_tag = f" [recalled:{recalled['word']}]" if recalled is not None else ""
             print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                   f"R={state['NegReward']:+.2f}  [{cluster_name} pers={judged['persistence']:.2f}]"
-                  f"{mem_tag}  {symbolic_to_english(line)}{tag}")
+                  f"{mem_tag}  {symbolic_to_sym(line)}{tag}")
 
     save_blob(conn, "mind_state", mind.get_state())
     save_blob(conn, LINE_USE_COUNT_KEY, dict(_LINE_USE_COUNT))  # persist overuse-history across invocations
@@ -6526,7 +6734,7 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
                     state_vec=qvec)
                 tag = " <-- response to prompt" if in_window else ""
                 log(f"t={mind.total_steps:6d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
-                    f"[{cluster_name} pers={judged['persistence']:.2f}]  {symbolic_to_english(line)}{tag}")
+                    f"[{cluster_name} pers={judged['persistence']:.2f}]  {symbolic_to_sym(line)}{tag}")
 
                 # ---- autosave EVERY TICK, at explicit request -- run() only does this once at exit ----
                 save_blob(conn, "mind_state", mind.get_state())
