@@ -599,6 +599,19 @@ class Mind:
         self.goal_steps_left = 0
         self.goal_progress = 0.0
 
+        # NEW: CURSOR CHANNEL (at explicit request -- a continuous (x,y) communication channel, driven
+        # by internal state, instead of discrete symbols). x/y are the cursor's actual position;
+        # vx/vy its velocity -- see update_cursor() below for the dynamics. Starts at the origin/at rest,
+        # same convention every other fresh-Mind EMA/field here follows. Persisted in get_state so the
+        # cursor doesn't jump back to center every time a saved Mind is reloaded -- where it's sitting
+        # IS part of the Mind's continuing state, same as goal_axis or world_density.
+        self.cursor_x = 0.0
+        self.cursor_y = 0.0
+        self.cursor_vx = 0.0
+        self.cursor_vy = 0.0
+        self.cursor_trace = []  # NEW: recent (t, x, y) samples, capped -- for exporting/plotting a
+                                 # trajectory rather than only ever seeing the current instantaneous point
+
         # NEW: Mind's own planning reservoir (see _plan_bias) -- same fixed-weight, per-unit-tanh-
         # recurrence reservoir-computing idiom as TinyTransformerLM.ReasoningCore in the transformer
         # file (RCORE_HIDDEN_UNITS/RCORE_LAYERS there), reimplemented in plain numpy here because
@@ -936,7 +949,10 @@ class Mind:
                     self_description=self.self_description,
                     world_density=self.world_density.copy(),  # NEW: world model's accumulated structure
                     goal_axis=self.goal_axis, goal_baseline=self.goal_baseline,  # NEW: agency loop
-                    goal_steps_left=self.goal_steps_left, goal_progress=self.goal_progress)
+                    goal_steps_left=self.goal_steps_left, goal_progress=self.goal_progress,
+                    cursor_x=self.cursor_x, cursor_y=self.cursor_y,           # NEW: cursor channel
+                    cursor_vx=self.cursor_vx, cursor_vy=self.cursor_vy,
+                    cursor_trace=list(self.cursor_trace[-CURSOR_TRACE_LEN:]))
 
     def set_state(self, st):
         # NEW: guard against loading a mind_state pickled under a different N/D than this
@@ -987,6 +1003,12 @@ class Mind:
         self.goal_baseline = st.get("goal_baseline", 0.5)    # these keys, fresh-goal defaults are safe
         self.goal_steps_left = st.get("goal_steps_left", 0)
         self.goal_progress = st.get("goal_progress", 0.0)
+        # NEW: cursor channel -- older DBs won't have these keys, resting-at-origin is a safe default
+        self.cursor_x = st.get("cursor_x", 0.0)
+        self.cursor_y = st.get("cursor_y", 0.0)
+        self.cursor_vx = st.get("cursor_vx", 0.0)
+        self.cursor_vy = st.get("cursor_vy", 0.0)
+        self.cursor_trace = st.get("cursor_trace", [])
 
     EXT_SENSE_WEIGHT = 0.15  # NEW: how faintly the external world can nudge desire-formation,
                               # relative to the internal signal's full weight of 1.0
@@ -3516,6 +3538,74 @@ _CONCEPT_ANSWER_TYPE_HINT = {
 ROUTE_TYPE_BONUS_WEIGHT = 0.08  # small on purpose -- this breaks near-ties between close-scoring
                                 # concepts, it must never be able to drag routing onto a concept whose
                                 # actual text similarity was clearly weaker
+
+# ============================================ CURSOR CHANNEL (at explicit request)
+# A continuous 2D communication channel: instead of decoding to symbols/words, the Mind's response to a
+# prompt is ALSO expressed as a cursor trajectory (x(t), y(t)) across a fixed "semantic workspace" --
+# SELF at the center, every hand-authored concept placed at its own fixed point around it. Which region
+# the cursor moves toward, how directly, how much it circles/hesitates on the way, and where it settles
+# are all driven by REAL per-tick state (which concept routing actually picked, how confident that
+# routing was, and the Mind's own coherence/agency that tick) -- not decorative random motion laid on
+# top of the symbolic output afterward.
+CURSOR_TRACE_LEN = 400  # how many (t, x, y) samples get persisted/exported -- caps unbounded growth the
+                          # same way basin_hist/axis_hist/etc. already cap theirs
+_CURSOR_REGION_NAMES = tuple(CONCEPT_BANK.keys())  # fixed order -> fixed layout, same reasoning as
+                                                     # _SYM_NOUN_ORDER: a dict has no order of its own,
+                                                     # and positions that shuffled between runs would
+                                                     # make a trajectory impossible to learn to read
+WORKSPACE_REGIONS = {"self": (0.0, 0.0)}  # SELF always sits at the center -- every concept is placed
+                                            # relative to it, and it's always exerting SOME pull (see
+                                            # update_cursor) since Gubi is never talking about a topic
+                                            # from nowhere -- there's always a self doing the talking
+for _i, _name in enumerate(_CURSOR_REGION_NAMES):
+    _theta = 2 * math.pi * _i / len(_CURSOR_REGION_NAMES)
+    WORKSPACE_REGIONS[_name] = (0.75 * math.cos(_theta), 0.75 * math.sin(_theta))
+del _i, _name, _theta  # loop scratch vars, not meant to leak as module globals
+
+CURSOR_SPRING_K = 0.35     # base pull-strength toward the current target -- scaled by coherence/
+                            # confidence at call time (see update_cursor): a confident, coherent tick
+                            # pulls harder and more directly, an uncertain one barely pulls at all
+CURSOR_DAMPING_BASE = 0.55  # base velocity damping -- scaled inversely by agency: low agency means
+                              # UNDER-damped (oscillates/circles instead of settling), high agency means
+                              # closer to critically damped (moves decisively, settles cleanly)
+CURSOR_JITTER_SCALE = 0.06  # random tangential push, scaled by (1 - confidence) -- an uncertain tick
+                              # doesn't just pull weakly toward its target, it actively wobbles around
+                              # whatever path it's on, which is what actually produces circling/hesitation
+                              # rather than just a slower straight line
+CURSOR_MAX_SPEED = 0.35     # hard speed cap per tick, so a sudden target jump can't teleport the cursor
+CURSOR_DT = 1.0             # one simulated timestep per generation tick
+
+def update_cursor(mind, target_name, confidence, coherence, agency, rng, dt=CURSOR_DT):
+    """Advance the cursor one tick toward WORKSPACE_REGIONS[target_name] (falling back to 'self' for an
+    unrecognized/None target -- e.g. pure ambient/mood-only ticks with no routed concept). Spring-mass-
+    damper dynamics: `confidence` (this tick's actual routing/grounding score) sets how hard the spring
+    pulls, `coherence` (state['C']) scales that pull further (an incoherent Mind can't commit to a
+    direction even about something it's confident of), and `agency` sets how underdamped the motion is
+    (low agency -> oscillates/circles rather than settling). Mutates mind.cursor_x/y/vx/vy in place and
+    appends to mind.cursor_trace; returns the new (x, y) for immediate use (e.g. printing this tick)."""
+    target = WORKSPACE_REGIONS.get(target_name, WORKSPACE_REGIONS["self"])
+    conf = float(np.clip(confidence, 0.0, 1.0))
+    coh = float(np.clip(coherence, 0.0, 1.0))
+    agn = float(np.clip(agency, 0.0, 1.0))
+
+    k = CURSOR_SPRING_K * conf * (0.3 + 0.7 * coh)  # weak/absent confidence or coherence -> weak pull
+    damping = CURSOR_DAMPING_BASE * (0.4 + 0.6 * agn)  # low agency -> underdamped -> circles/oscillates
+
+    ax = k * (target[0] - mind.cursor_x) - damping * mind.cursor_vx
+    ay = k * (target[1] - mind.cursor_y) - damping * mind.cursor_vy
+    if conf < 1.0:  # jitter grows as confidence shrinks -- see docstring
+        jitter = CURSOR_JITTER_SCALE * (1.0 - conf)
+        ax += rng.normal(0.0, jitter)
+        ay += rng.normal(0.0, jitter)
+
+    mind.cursor_vx = float(np.clip(mind.cursor_vx + ax * dt, -CURSOR_MAX_SPEED, CURSOR_MAX_SPEED))
+    mind.cursor_vy = float(np.clip(mind.cursor_vy + ay * dt, -CURSOR_MAX_SPEED, CURSOR_MAX_SPEED))
+    mind.cursor_x = float(np.clip(mind.cursor_x + mind.cursor_vx * dt, -1.0, 1.0))
+    mind.cursor_y = float(np.clip(mind.cursor_y + mind.cursor_vy * dt, -1.0, 1.0))
+    mind.cursor_trace.append((mind.total_steps, mind.cursor_x, mind.cursor_y))
+    if len(mind.cursor_trace) > CURSOR_TRACE_LEN:
+        del mind.cursor_trace[: len(mind.cursor_trace) - CURSOR_TRACE_LEN]
+    return mind.cursor_x, mind.cursor_y
 
 _IDF_DOCS = [c["seed_phrases"] for c in CONCEPT_BANK.values()] + [c["keywords"] for c in CLUSTERS.values()]
 _IDF, _DEFAULT_IDF = _build_idf(_IDF_DOCS)
@@ -6573,6 +6663,14 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         # immediately after so ambient/repeat generation for every other t falls back to TOPIC_BEST_OF/
         # FREE_BEST_OF as before.
         _BRANCH_OVERRIDE_BEST_OF = answer_branches if (t == 0 and in_window and answer_branches) else None
+        # NEW: CURSOR CHANNEL -- advance once per tick regardless of which branch below actually runs,
+        # using whichever concept (or "will") routing picked this tick as the target region, falling back
+        # to "self" for every mood/ambient tick (moods aren't a "subject" being discussed, so there's
+        # nothing else to move toward). See update_cursor()'s docstring for the actual dynamics.
+        cursor_target = name if kind == "concept" else "self"
+        cursor_x, cursor_y = update_cursor(mind, cursor_target, confidence=ground_score,
+                                            coherence=state["C"], agency=norm.get("agency", 0.5),
+                                            rng=mind.rng)
         if in_window and not experience_recorded:
             spoken_name = "will" if wants else name
             record_experience(spoken_name, prompt, norm, anchor_drift, axis_profile)
@@ -6585,6 +6683,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [wants:{axis} desire={desire_val:.2f} "
                       f"gate={judged['recall_gate']:.2f} pers={judged['persistence']:.2f}]{mem_tag}  "
+                      f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  "
                       f"{symbolic_to_sym(line)} <-- response to prompt")
             continue
         if in_window and concept_name is not None:
@@ -6593,6 +6692,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             if t % 10 == 0 or in_window:
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [concept:{concept_name} g={ground_score:.2f}]  "
+                      f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  "
                       f"{symbolic_to_sym(line)} <-- semantic response")
             continue
         # NEW: cluster_name is now only a LABEL (from pick_cluster's distance
@@ -6619,7 +6719,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             mem_tag = f" [recalled:{recalled['word']}]" if recalled is not None else ""
             print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                   f"R={state['NegReward']:+.2f}  [{cluster_name} pers={judged['persistence']:.2f}]"
-                  f"{mem_tag}  {symbolic_to_sym(line)}{tag}")
+                  f"{mem_tag}  cursor=({cursor_x:+.2f},{cursor_y:+.2f})  {symbolic_to_sym(line)}{tag}")
 
     save_blob(conn, "mind_state", mind.get_state())
     save_blob(conn, LINE_USE_COUNT_KEY, dict(_LINE_USE_COUNT))  # persist overuse-history across invocations
@@ -6727,6 +6827,12 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
 
                 qvec, _ = qualia_vector(mind, state, norm)
                 cluster_name = pick_cluster(norm)
+                # NEW: CURSOR CHANNEL -- kiba_cli's interactive loop has no concept-routing of its own
+                # (see run()'s semantic_route_multi call, which this loop never makes), so there's no
+                # "subject" region to move toward here -- always targets "self", still driven by real
+                # per-tick coherence/agency rather than sitting frozen while run()'s cursor advances.
+                cursor_x, cursor_y = update_cursor(mind, "self", confidence=1.0, coherence=state["C"],
+                                                    agency=norm.get("agency", 0.5), rng=mind.rng)
                 line, judged, recalled = _generate_and_track(
                     mind, qvec, choose_rng,
                     topic_vec=prompt_topic_vec if in_window else None,
@@ -6734,7 +6840,8 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
                     state_vec=qvec)
                 tag = " <-- response to prompt" if in_window else ""
                 log(f"t={mind.total_steps:6d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
-                    f"[{cluster_name} pers={judged['persistence']:.2f}]  {symbolic_to_sym(line)}{tag}")
+                    f"[{cluster_name} pers={judged['persistence']:.2f}]  "
+                    f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  {symbolic_to_sym(line)}{tag}")
 
                 # ---- autosave EVERY TICK, at explicit request -- run() only does this once at exit ----
                 save_blob(conn, "mind_state", mind.get_state())
