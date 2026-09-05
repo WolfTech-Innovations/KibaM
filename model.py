@@ -1922,83 +1922,83 @@ CLUSTERS = {
     # neither one is template text, both are still load-bearing elsewhere.
     "fragmented": dict(
         tags={"coherence": 0.0, "integration": 0.0},
-        keywords=["fragmentado", "fragmentada", "fragmenta", "roto", "rota", "pedazos", "quebrado", "quebrada",
-                   "caotico", "caótico", "desordenado", "desordenada", "desmorona", "deshecho", "deshecha", "sin orden",
-                   "estresado", "estresada", "agobiado", "agobiada", "abrumado", "abrumada", "hecho polvo", "hecha polvo",
-                   "mal", "fatal", "destrozado", "destrozada"],
+        keywords=["fragmented", "fragmented", "fragments", "broken", "broken", "pieces", "shattered", "shattered",
+                   "chaotic", "chaotic", "disordered", "disordered", "crumbles", "undone", "undone", "out of order",
+                   "stressed", "stressed", "overburdened", "overburdened", "overwhelmed", "overwhelmed", "wiped out", "wiped out",
+                   "bad", "awful", "wrecked", "wrecked"],
     ),
     "stable": dict(
         tags={"coherence": 1.0, "integration": 1.0},
-        keywords=["estable", "integro", "íntegro", "integra", "íntegra", "entero", "entera", "firme", "solido",
-                   "sólido", "solida", "sólida", "integrado", "integrada", "unido", "unida", "cohesion", "cohesión",
-                   "bien", "feliz", "contento", "contenta", "tranquilo", "tranquila", "en paz", "equilibrado",
-                   "equilibrada", "genial", "de maravilla"],
+        keywords=["stable", "whole", "whole", "whole", "whole", "entire", "entire", "steady", "solid",
+                   "solid", "solid", "solid", "integrated", "integrated", "united", "united", "cohesion", "cohesion",
+                   "good", "happy", "content", "content", "calm", "calm", "at peace", "balanced",
+                   "balanced", "great", "wonderfully"],
     ),
     "looping": dict(
         tags={},  # not scored by distance -- only ever selected via the basin override below
-        keywords=["bucle", "repite", "repetido", "repetida", "atrapado", "atrapada", "ciclo", "vuelta", "loop",
-                   "circulo", "círculo", "estancado", "estancada", "gira", "espiral",
-                   "obsesionado", "obsesionada", "dando vueltas", "no puedo parar de pensar", "atascado", "atascada"],
+        keywords=["loop", "repeats", "repeated", "repeated", "trapped", "trapped", "cycle", "turn", "loop",
+                   "circle", "circle", "stuck", "stuck", "spins", "spiral",
+                   "obsessed", "obsessed", "going in circles", "can't stop thinking", "stuck", "stuck"],
     ),
     "energy_high": dict(
         tags={"energy": 1.0},
-        keywords=["energia", "energía", "intenso", "intensa", "electrico", "eléctrico", "electrica", "eléctrica",
-                   "vibra", "fuerte", "chispa", "potencia", "activo", "activa", "encendido", "encendida",
-                   "emocionado", "emocionada", "animado", "animada", "eufórico", "eufórica", "con energia", "con energía"],
+        keywords=["energy", "energy", "intense", "intense", "electric", "electric", "electric", "electric",
+                   "vibrates", "strong", "spark", "power", "active", "active", "lit up", "lit up",
+                   "excited", "excited", "lively", "lively", "euphoric", "euphoric", "energetic", "energetic"],
     ),
     "energy_low": dict(
         tags={"energy": 0.0},
-        keywords=["apagado", "apagada", "debil", "débil", "tenue", "cansado", "cansada", "dormido", "dormida",
-                   "silencio", "extingue", "agotado", "agotada", "flojo", "floja",
-                   "triste", "desanimado", "desanimada", "sin ganas", "sin energia", "sin energía", "de bajón"],
+        keywords=["switched off", "switched off", "weak", "weak", "faint", "tired", "tired", "asleep", "asleep",
+                   "silence", "extinguishes", "exhausted", "exhausted", "slack", "slack",
+                   "sad", "discouraged", "discouraged", "unmotivated", "without energy", "without energy", "down"],
     ),
     "agency_high": dict(
         tags={"agency": 1.0},
-        keywords=["decidido", "decidida", "meta", "avanza", "voluntad", "proposito", "propósito", "determinacion",
-                   "determinación", "resuelto", "resuelta", "con rumbo",
-                   "motivado", "motivada", "con ganas", "enfocado", "enfocada"],
+        keywords=["determined", "determined", "goal", "advances", "willpower", "purpose", "purpose", "determination",
+                   "determination", "resolved", "resolved", "on course",
+                   "motivated", "motivated", "eager", "focused", "focused"],
     ),
     "agency_low": dict(
         tags={"agency": 0.0},
-        keywords=["deriva", "perdido", "perdida", "rumbo", "pasivo", "pasiva", "flota", "sin control", "indeciso",
-                   "indecisa", "brujula", "brújula", "al azar", "sin destino",
-                   "desmotivado", "desmotivada", "apatico", "apático", "apatica", "apática"],
+        keywords=["drifts", "lost", "lost", "course", "passive", "passive", "floats", "out of control", "indecisive",
+                   "indecisive", "compass", "compass", "at random", "without direction",
+                   "unmotivated", "unmotivated", "apathetic", "apathetic", "apathetic", "apathetic"],
     ),
     "grounded": dict(
         tags={"grounding": 1.0},
-        keywords=["raiz", "raíz", "anclado", "anclada", "origen", "base", "tierra", "arraigado", "arraigada",
-                   "cimiento", "solido", "sólido", "afirma", "arraigo",
-                   "seguro", "segura", "centrado", "centrada", "en control"],
+        keywords=["root", "root", "anchored", "anchored", "origin", "base", "ground", "rooted", "rooted",
+                   "foundation", "solid", "solid", "affirms", "rootedness",
+                   "secure", "secure", "centered", "centered", "in control"],
     ),
     "untethered": dict(
         tags={"grounding": 0.0},
-        keywords=["fantasma", "disperso", "dispersa", "desatado", "desatada", "libre", "suelto", "suelta", "niebla",
-                   "humo", "sin ataduras", "flotando", "sin raiz", "sin raíz",
-                   "confundido", "confundida", "desconectado", "desconectada", "ido", "ida", "en las nubes"],
+        keywords=["ghost", "scattered", "scattered", "untied", "untied", "free", "loose", "loose", "fog",
+                   "smoke", "unbound", "floating", "rootless", "rootless",
+                   "confused", "confused", "disconnected", "disconnected", "gone", "gone", "in the clouds"],
     ),
     "volatile": dict(
         tags={"predictability": 0.0},
-        keywords=["inestable", "caos", "impredecible", "titubea", "erratico", "errático", "erratica", "errática",
-                   "descontrola", "azaroso", "azarosa", "sin ley", "salta",
-                   "nervioso", "nerviosa", "ansioso", "ansiosa", "inquieto", "inquieta", "alterado", "alterada"],
+        keywords=["unstable", "chaos", "unpredictable", "wavers", "erratic", "erratic", "erratic", "erratic",
+                   "spirals out of control", "random", "random", "lawless", "jumps",
+                   "nervous", "nervous", "anxious", "anxious", "restless", "restless", "agitated", "agitated"],
     ),
     "predictable": dict(
         tags={"predictability": 1.0},
-        keywords=["ritmo", "regular", "constante", "previsible", "patron", "patrón", "cadencia", "uniforme",
-                   "exacto", "exacta", "precision", "precisión", "sin sorpresas",
-                   "normal", "de siempre", "como siempre", "rutinario", "rutinaria", "lo de siempre"],
+        keywords=["rhythm", "regular", "constant", "predictable", "pattern", "pattern", "cadence", "uniform",
+                   "exact", "exact", "precision", "precision", "no surprises",
+                   "normal", "usual", "as always", "routine", "routine", "the same old thing"],
     ),
     "memory_high": dict(
         tags={"memory": 1.0},
-        keywords=["memoria", "recuerda", "persiste", "pasado", "viva", "recuerdo", "perdura", "huella", "nitido",
-                   "nítido", "nitida", "nítida", "intacto", "intacta", "permanece",
-                   "nostalgico", "nostálgico", "nostalgica", "nostálgica", "sentimental", "recuerdos"],
+        keywords=["memory", "remembers", "persists", "past", "alive", "memory", "endures", "trace", "vivid",
+                   "vivid", "vivid", "vivid", "intact", "intact", "remains",
+                   "nostalgic", "nostalgic", "nostalgic", "nostalgic", "sentimental", "memories"],
     ),
     "memory_low": dict(
         tags={"memory": 0.0},
-        keywords=["olvida", "borra", "difuso", "difusa", "niebla", "desvanece", "borroso", "borrosa", "vacio",
-                   "vacío", "sin rastro", "olvido",
-                   "olvidadizo", "olvidadiza", "en blanco", "distraido", "distraída"],
+        keywords=["forgets", "erases", "blurry", "blurry", "fog", "fades", "blurred", "blurred", "empty",
+                   "empty", "without a trace", "forgetfulness",
+                   "forgetful", "forgetful", "blank", "distracted", "distracted"],
     ),
 }
 
@@ -2008,40 +2008,40 @@ CLUSTERS = {
 # it becomes ordinary vocabulary for the word-by-word generator below instead
 # of being locked into fixed template positions.
 HARVESTED_VOCAB = [
-    "patron", "patrón", "forma", "orden", "fragmenta", "quiebra", "desmorona", "roto", "rota", "deshecho", "deshecha",
-    "quebrado", "quebrada", "erráticamente", "sin", "aviso", "repente", "razón", "aparente", "instante", "mil",
-    "pedazos", "direcciones", "opuestas", "alguno", "nucleo", "núcleo", "estructura", "centro", "mantiene", "sostiene",
-    "permanece", "íntegro", "íntegra", "firme", "entero", "entera", "firmemente", "calma", "fisuras", "solidez",
-    "ceder", "propósito", "lugar", "presión", "pase", "eco", "espiral", "repite", "gira", "logra", "escapar",
-    "atrapado", "atrapada", "detenido", "detenida", "cesar", "otra", "vez", "salida", "punto", "interminablemente",
-    "dentro", "sí", "mismo", "llegar", "ninguna", "parte", "círculo", "cerrado", "corriente", "pulso", "chispa",
-    "vibra", "dispara", "estalla", "eléctrico", "eléctrica", "intenso", "intensa", "vivo", "viva", "intensamente",
-    "fuerza", "freno", "toda", "potencia", "energía", "desbordante", "través", "red", "cuerpo", "canal", "extremo",
-    "otro", "descanso", "señal", "impulso", "llama", "apaga", "extingue", "debilita", "tenue", "débil", "lentamente",
-    "poco", "resistencia", "silencio", "sombra", "casi", "desaparecer", "penumbra", "dejar", "rastro", "calor",
-    "motor", "voluntad", "rumbo", "avanza", "define", "detiene", "claro", "clara", "decidido", "decidida",
-    "decididamente", "dudar", "determinación", "vacilar", "resueltamente", "umbral", "meta", "adelante", "busca",
-    "mirar", "atrás", "deriva", "brújula", "flota", "pierde", "calla", "perdido", "perdida", "mudo", "muda",
-    "control", "decidir", "nada", "azar", "corrientes", "posibilidades", "destino", "fijo", "lado", "saber",
-    "hacia", "dónde", "raíz", "cimiento", "base", "ancla", "afirma", "estable", "sólido", "sólida", "profundamente",
-    "firmeza", "moverse", "arraigo", "terreno", "origen", "tierra", "profundo", "propio", "suelo", "fantasma",
-    "niebla", "humo", "disuelve", "extiende", "aleja", "disperso", "dispersa", "suelto", "suelta",
-    "silenciosamente", "ataduras", "flotando", "peso", "allá", "borde", "límite", "lejos", "aire", "aguja",
-    "compás", "titubea", "salta", "descontrola", "inestable", "errático", "errática", "caótico", "caótica",
-    "bruscamente", "previo", "impredeciblemente", "dos", "estados", "ley", "azarosa", "repetirse", "nunca",
-    "ritmo", "reloj", "cadencia", "marca", "paso", "regular", "constante", "uniforme", "constantemente", "variar",
-    "precisión", "sorpresas", "exactitud", "tiempo", "ciclo", "salirse", "recuerdo", "huella", "persiste",
-    "perdura", "nítido", "nítida", "claramente", "nitidez", "desvanecerse", "año", "tras", "superficie", "capa",
-    "detalle", "fondo", "todo", "olvida", "borra", "imagen", "nombre", "difuso", "difusa", "gradualmente",
-    "remedio", "siempre", "olvido", "vacío", "más",
+    "pattern", "pattern", "shape", "order", "fragments", "breaks", "crumbles", "broken", "broken", "undone", "undone",
+    "shattered", "shattered", "erratically", "without", "warning", "sudden", "reason", "apparent", "instant", "thousand",
+    "pieces", "directions", "opposite", "some", "core", "core", "structure", "center", "maintains", "holds",
+    "remains", "whole", "whole", "steady", "entire", "entire", "firmly", "calm", "cracks", "solidity",
+    "yield", "purpose", "place", "pressure", "pass", "echo", "spiral", "repeats", "spins", "manages", "escape",
+    "trapped", "trapped", "stopped", "stopped", "cease", "another", "time", "exit", "point", "endlessly",
+    "inside", "itself", "same", "arrive", "no", "part", "circle", "closed", "current", "pulse", "spark",
+    "vibrates", "fires", "bursts", "electric", "electric", "intense", "intense", "alive", "alive", "intensely",
+    "force", "brake", "all", "power", "energy", "overflowing", "through", "network", "body", "channel", "extreme",
+    "other", "rest", "signal", "impulse", "flame", "extinguishes", "extinguishes", "weakens", "faint", "weak", "slowly",
+    "little", "resistance", "silence", "shadow", "almost", "disappear", "twilight", "leave", "trace", "warmth",
+    "engine", "willpower", "course", "advances", "defines", "stops", "clear", "clear", "determined", "determined",
+    "decidedly", "doubt", "determination", "hesitate", "resolutely", "threshold", "goal", "forward", "seeks",
+    "look", "back", "drifts", "compass", "floats", "loses", "falls silent", "lost", "lost", "mute", "mute",
+    "control", "decide", "nothing", "chance", "currents", "possibilities", "destiny", "fixed", "side", "know",
+    "toward", "where", "root", "foundation", "base", "anchor", "affirms", "stable", "solid", "solid", "deeply",
+    "firmness", "move", "rootedness", "terrain", "origin", "ground", "deep", "own", "soil", "ghost",
+    "fog", "smoke", "dissolves", "extends", "moves away", "scattered", "scattered", "loose", "loose",
+    "silently", "ties", "floating", "weight", "yonder", "edge", "limit", "far", "air", "needle",
+    "compass", "wavers", "jumps", "spirals out of control", "unstable", "erratic", "erratic", "chaotic", "chaotic",
+    "abruptly", "previous", "unpredictably", "two", "states", "law", "random", "repeat itself", "never",
+    "rhythm", "clock", "cadence", "marks", "step", "regular", "constant", "uniform", "constantly", "vary",
+    "precision", "surprises", "exactness", "time", "cycle", "break free", "memory", "trace", "persists",
+    "endures", "vivid", "vivid", "clearly", "vividness", "fade away", "year", "after", "surface", "layer",
+    "detail", "background", "everything", "forgets", "erases", "image", "name", "blurry", "blurry", "gradually",
+    "remedy", "always", "forgetfulness", "empty", "more",
     # SELF_CLUSTERS (self-model introspection) vocabulary
-    "modelo", "interno", "nodos", "mapa", "diverge", "separa", "desalineado", "desalineada", "dimensiones",
-    "converger", "cada", "uno", "acuerdo", "distintas", "ejes", "común", "encuentro", "propia", "lectura",
-    "converge", "alinea", "coincide", "unificado", "unificada", "alineado", "alineada", "completo", "discrepancia",
-    "unánime", "eje", "todos", "margen", "diferencia", "aprendizaje", "preferencia", "entrenada", "sesgo",
-    "aprendido", "tira", "empuja", "inclina", "trayectoria", "marcado", "marcada", "insistencia", "ambigüedad",
-    "dirección", "concreta", "experiencia", "resultó", "mejor", "aprendió", "historia", "suficiente", "manera",
-    "pareja", "inclinarse", "particular", "coordenadas", "falta", "pasos",
+    "model", "internal", "nodes", "map", "diverges", "separates", "misaligned", "misaligned", "dimensions",
+    "converge", "each", "one", "agreement", "distinct", "axes", "common", "encounter", "own", "reading",
+    "converges", "aligns", "coincides", "unified", "unified", "aligned", "aligned", "complete", "discrepancy",
+    "unanimous", "axis", "all", "margin", "difference", "learning", "preference", "trained", "bias",
+    "learned", "pulls", "pushes", "tilts", "trajectory", "marked", "marked", "insistence", "ambiguity",
+    "direction", "concrete", "experience", "turned out", "better", "learned", "history", "enough", "way",
+    "pair", "lean toward", "particular", "coordinates", "lack", "steps",
 ]
 
 # ============================================ SELF-MODEL INTROSPECTION
@@ -2972,7 +2972,7 @@ def _concept_consciousness(mind, state, norm, rng, topic_vec=None, prompt_text=N
     inclusive qualia vector."""
     qvec, _ = qualia_vector(mind, state, norm)
     query = _blend(CONCEPT_ANCHORS["consciousness"], 0.35, qvec, 0.65)
-    text, _, _ = _generate_and_track(mind, query, rng, prefix="Me siento así: ",
+    text, _, _ = _generate_and_track(mind, query, rng, prefix="I feel like this: ",
                                       topic_vec=topic_vec, prompt_text=prompt_text, state_vec=qvec, concept_name="consciousness")
     return text
 
@@ -3001,6 +3001,27 @@ def _concept_how_it_works(mind, state, norm, rng, topic_vec=None, prompt_text=No
 # SEED_CORPUS (generic civic/logistics sentences with zero purpose/identity/consciousness
 # vocabulary) and hoping the reranker can pick something relevant out of candidates that were
 # never going to contain it.
+# NEW (grammar-constrained decoding for Lang/Spanish, at explicit request -- "add an FSM to Lang too"):
+# a small hand-rolled FSM (not a POS tagger, not a parser) that classifies each candidate word into a
+# coarse closed-class role using fixed Spanish function-word lists, tracks only the ROLE of the last
+# token emitted, and masks out candidates that would make the sentence GUARANTEED-invalid from here -- an
+# article/preposition/connector left dangling with nothing after it, two of the same closed class stacked
+# back to back, or a sentence that opens on a bare connector. Deliberately conservative: this never tries
+# to enforce full syntax (agreement, word order), only rules out combinations no grammatical Spanish
+# sentence would ever contain.
+_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
+    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
+    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
+    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
+    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
+}
+_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
+             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
+             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
+_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
+_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
+_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
+
 # ============================================ SYMBOLIC OUTPUT ALPHABET
 # At explicit request ("drop standard language, replace with this"): the model's own output vocabulary is
 # no longer natural-language words at all (Spanish or English) -- it's a fixed, hand-designed symbol
@@ -3649,11 +3670,17 @@ TF_TOPK = 60             # candidate-set size drawn from the model's own top-K s
                           # reranking -- mirrors what the OLD bigram lookup already did structurally
                           # (candidates = bigram.get(prev), typically a few dozen words), so sem_score is
                           # still reranking WITHIN a locally-plausible set, not the entire vocabulary
-TF_SCRATCH_EPOCHS = 75  # PERMA -- 75, settled. (WAS 50, WAS 75, WAS 25, WAS 75 before that, before that
-                          # 600, before that 320, originally 128.) One-time cost, only when no persisted
-                          # weights exist yet (mirrors bootstrap_steps vs topup_steps already being a
-                          # first-run-is-heavier pattern elsewhere in run()). GRAMMAR_SCRATCH_EPOCHS below
-                          # mirrors this same 35-epoch budget for the grammar-checker transformer.
+TF_SCRATCH_EPOCHS = 128  # CHANGED (at explicit request, back up from 75) -- history: originally 128, then
+                          # tuned down over several rounds (WAS 50, WAS 75, WAS 25, WAS 75, WAS 320, WAS 600)
+                          # to 75, marked "settled" at the time. Restoring 128 is still bounded by
+                          # TF_SCRATCH_EARLY_STOP_PATIENCE below, so this raises the CEILING on scratch
+                          # training, not a forced full run -- if loss plateaus before epoch 128 the same
+                          # way it did during the earlier tuning that settled on 75, early stopping still
+                          # cuts the run short exactly as it would have at any other epoch count.
+                          # One-time cost, only when no persisted weights exist yet (mirrors bootstrap_steps
+                          # vs topup_steps already being a first-run-is-heavier pattern elsewhere in run()).
+                          # GRAMMAR_SCRATCH_EPOCHS below is intentionally left at its own separate value --
+                          # this change only touches the main transformer's scratch-training ceiling.
 TF_SCRATCH_LIVE_LOG_EVERY = 5   # NEW (live log, at explicit request): print running loss every 5 epochs
                           # during the scratch-training pass -- see _tf_train_epochs' live_log_every.
 TF_BATCH_SIZE = 128       # NEW (training speed): WAS hardcoded 32 inside _tf_train_epochs. Larger batches
@@ -4884,27 +4911,6 @@ def _dual_transformer_word_step(out, context_vec, workspace_vec=None):
 ENTITY_BLEND_WEIGHT = 0.25  # how hard the persistent discourse entity pulls query_vec toward it
 ENTITY_LEXICAL_BOOST = 1.8  # direct probability multiplier when entity_word itself is a valid candidate
 
-# NEW (grammar-constrained decoding for Lang/Spanish, at explicit request -- "add an FSM to Lang too"):
-# a small hand-rolled FSM (not a POS tagger, not a parser) that classifies each candidate word into a
-# coarse closed-class role using fixed Spanish function-word lists, tracks only the ROLE of the last
-# token emitted, and masks out candidates that would make the sentence GUARANTEED-invalid from here -- an
-# article/preposition/connector left dangling with nothing after it, two of the same closed class stacked
-# back to back, or a sentence that opens on a bare connector. Deliberately conservative: this never tries
-# to enforce full syntax (agreement, word order), only rules out combinations no grammatical Spanish
-# sentence would ever contain.
-_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
-    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
-    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
-    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
-    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
-}
-_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
-             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
-             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
-_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
-_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
-_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
-
 class _LangGrammarState:
     START, NOUN, OP, CONN, MOD, UNARY = range(6)
 
@@ -4943,6 +4949,162 @@ class _LangGrammarState:
 
     def advance(self, w):
         self.last = self.classify(w)
+
+# NEW (fix, at explicit request -- "make the generated text itself read as coherent English"): the
+# symbol-algebra output above is real and untouched -- generation, training, and the corpus all still
+# work in NOUN/OP/CONN/MOD/UNARY symbol tokens exactly as before. This function is a pure DISPLAY-layer
+# decoder: it takes one already-generated symbolic line and renders it as an English sentence using the
+# same SYMBOL_TABLE definitions and _LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY classification
+# already in this file, so nothing about the underlying model, training pipeline, or vocabulary changes --
+# only what gets PRINTED to the human. Deliberately NOT wired into _remember_line/corpus/embedding paths,
+# which still operate on the raw symbolic tokens as before.
+# NEW (fix, at explicit request -- "make the generated text itself read as coherent English"): the
+# symbol-algebra output above is real and untouched -- generation, training, and the corpus all still
+# work in NOUN/OP/CONN/MOD/UNARY symbol tokens exactly as before. This function is a pure DISPLAY-layer
+# decoder: it takes one already-generated symbolic line and renders it as an English sentence using the
+# same SYMBOL_TABLE definitions and _LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY classification
+# already in this file, so nothing about the underlying model, training pipeline, or vocabulary changes --
+# only what gets PRINTED to the human. Deliberately NOT wired into _remember_line/corpus/embedding paths,
+# which still operate on the raw symbolic tokens as before.
+_NOUN_GLOSS = {  # plain-English gloss for each _LANG_NOUNS tag -- axes first (mirrors AXIS_NAMES/
+                 # self_model_axes), then concept nouns (mirrors CONCEPT_BANK's identity/architecture set)
+    "COH": "coherence", "INT": "integration", "NRG": "energy", "AGN": "agency", "GRD": "grounding",
+    "PRD": "predictability", "MEM": "memory", "SPR": "spread", "PUL": "pull",
+    "SELF": "self", "GUBI": "Gubi", "PROTOGEN": "protogen", "CODE": "code", "VOICE": "voice",
+    "ARCH": "architecture", "NODE": "node", "VECTOR": "vector", "MATRIX": "matrix", "LAYER": "layer",
+    "NOW": "now", "MIND": "mind", "PROOF": "proof", "EXPERIENCE": "experience", "DOUBT": "doubt",
+    "WHY": "why", "GEN": "generation", "LANG": "language", "HUMAN": "human", "TIME": "time",
+    "EXPERIMENT": "experiment", "WORD": "word", "STATE": "state", "CHOICE": "choice", "PROB": "probability",
+    "16": "sixteen",
+}
+# CHANGED (at explicit request -- "make it as fluent as possible"): each operator now carries BOTH a
+# singular and a plural verb form (English subject-verb agreement), selected in symbolic_to_english
+# below based on how many nouns got grouped into the preceding term -- "energy leads to code" vs.
+# "energy, memory, and mind lead to code".
+_OP_PHRASE = {  # SYMBOL_TABLE's relation/change/reasoning symbols -> (singular, plural) verb phrase
+    ":": ("is defined as", "are defined as"), "\u2192": ("leads to", "lead to"),
+    "\u2190": ("comes from", "come from"), "\u2194": ("relates to", "relate to"),
+    "\u22a5": ("conflicts with", "conflict with"), "\u2225": ("runs parallel to", "run parallel to"),
+    "\u2282": ("is part of", "are part of"), "\u2283": ("contains", "contain"),
+    "\u2229": ("overlaps with", "overlap with"), "\u222a": ("combines with", "combine with"),
+    "\u2191": ("is increasing in", "are increasing in"), "\u2193": ("is decreasing in", "are decreasing in"),
+    "\u2197": ("is improving in", "are improving in"), "\u2198": ("is degrading in", "are degrading in"),
+    "\u21bb": ("keeps repeating", "keep repeating"), "\u21ba": ("is reversing", "are reversing"),
+    "\u00d7": ("has stopped", "have stopped"), "\u2026": ("continues", "continue"),
+    "\u2234": ("therefore", "therefore"), "\u2235": ("because", "because"),
+    "\u00b1": ("or possibly the opposite of", "or possibly the opposite of"),
+}
+_CONN_PHRASE = {"&": "and", "\u2228": "or", "|": ";"}  # top-level clause connectors
+_MOD_PHRASE = {  # modifiers attach as a parenthetical right after the term they modify
+    "\u00b0": "low", "\u00b7": "moderate", "\u25cf": "high", "\u221e": "extreme", "~": "fluctuating",
+}
+_UNARY_PHRASE = {  # core-state / negation symbols, rendered as standalone descriptors
+    "\u2022": "affirmed", "\u2014": "negated", "\u2248": "uncertain", "?": "unknown",
+    "\u2205": "absent", "!": "significant", "\u00ac": "not",
+}
+
+def _join_noun_list(words):
+    """English list joining with an Oxford comma: ['a'] -> 'a', ['a','b'] -> 'a and b',
+    ['a','b','c'] -> 'a, b, and c'. This is what turns a run of adjacent NOUN tokens (structurally
+    valid under _LangGrammarState -- open class, no connector required between them) into a real noun
+    phrase instead of bare words jammed together with no punctuation."""
+    if len(words) == 1:
+        return words[0]
+    if len(words) == 2:
+        return f"{words[0]} and {words[1]}"
+    return ", ".join(words[:-1]) + f", and {words[-1]}"
+
+def symbolic_to_english(line):
+    """Decode one geometric_generate output line (symbol-algebra tokens) into a readable, grammatical
+    English sentence, for display only. Groups runs of adjacent noun tokens into a single Oxford-comma
+    noun phrase, picks singular/plural verb agreement for the operator connecting two terms, and
+    stitches clauses split by top-level connectors (&/∨/|) into one sentence rather than printing each
+    token as an isolated word. Unrecognized tokens fall back to their lowercased original form rather
+    than being dropped, so nothing silently disappears if the symbol alphabet ever grows."""
+    if not line:
+        return line
+    stripped = line.rstrip()
+    trailing = "."
+    if stripped and stripped[-1] in ".!?":
+        trailing = stripped[-1]
+        stripped = stripped[:-1]
+    raw_tokens = [w.strip(".,!?\u00bf\u00a1") for w in stripped.split()]
+    raw_tokens = [w for w in raw_tokens if w]
+    if not raw_tokens:
+        return line
+
+    # Pass 1: classify each token and fold MOD tokens into the immediately preceding term (as a
+    # parenthetical), so grouping below never has to special-case them.
+    items = []  # list of ("TERM", text) | ("OP", (sing, plur)) | ("CONN", text)
+    for w in raw_tokens:
+        if w in _LANG_MOD:
+            paren = f"({_MOD_PHRASE[w]})"
+            if items and items[-1][0] == "TERM":
+                items[-1] = ("TERM", f"{items[-1][1]} {paren}")
+            else:
+                items.append(("TERM", paren))
+        elif w in _LANG_OPS:
+            items.append(("OP", _OP_PHRASE[w]))
+        elif w in _LANG_CONN:
+            items.append(("CONN", _CONN_PHRASE[w]))
+        elif w in _LANG_UNARY:
+            items.append(("TERM", _UNARY_PHRASE[w]))
+        else:
+            items.append(("TERM", _NOUN_GLOSS.get(w.upper(), w.lower())))
+
+    # Pass 2: collapse consecutive TERM entries into one grouped noun phrase, remembering how many
+    # nouns went into it (for verb agreement in Pass 3).
+    groups = []  # list of ("TERMS", phrase, count) | ("OP", (sing, plur)) | ("CONN", text)
+    buf = []
+    for kind, val in items:
+        if kind == "TERM":
+            buf.append(val)
+            continue
+        if buf:
+            groups.append(("TERMS", _join_noun_list(buf), len(buf)))
+            buf = []
+        groups.append((kind, val, None))
+    if buf:
+        groups.append(("TERMS", _join_noun_list(buf), len(buf)))
+
+    # Pass 3: assemble clauses -- an OP renders as a verb phrase (singular/plural chosen from the
+    # SUBJECT term just before it) sitting directly between two term groups; a CONN closes the current
+    # clause and joins it to the next one with "and"/"or"/";" instead of starting a disconnected
+    # sentence fragment.
+    clauses, cur, cur_count = [], [], 1
+    for entry in groups:
+        kind = entry[0]
+        if kind == "CONN":
+            if cur:
+                clauses.append((" ".join(cur), entry[1]))
+            cur, cur_count = [], 1
+            continue
+        if kind == "OP":
+            sing, plur = entry[1]
+            cur.append(plur if cur_count > 1 else sing)
+        else:  # TERMS
+            _, phrase, count = entry
+            cur.append(phrase)
+            cur_count = count
+    if cur:
+        clauses.append((" ".join(cur), None))
+
+    if not clauses:
+        return line
+
+    sentence = clauses[0][0]
+    for text, joiner in clauses[1:]:
+        sentence = f"{sentence} {clauses[clauses.index((text, joiner)) - 1][1] or 'and'} {text}"
+    # ^ stitches using each clause's OWN trailing connector word, captured alongside it above
+    parts = [clauses[0][0]]
+    for i in range(1, len(clauses)):
+        connector = clauses[i - 1][1] or "and"
+        parts.append(connector)
+        parts.append(clauses[i][0])
+    sentence = " ".join(parts)
+
+    sentence = sentence[0].upper() + sentence[1:]
+    return sentence + trailing
 
 def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
                         entity_vec=None, entity_word=None, entity_weight=None, mind=None):
@@ -5329,6 +5491,15 @@ def load_raw_corpus(conn):
     return load_blob(conn, RAW_CORPUS_KEY) or []
 
 def update_raw_corpus(conn, prompt):
+    # NEW (bugfix, defense-in-depth alongside the __main__ argv guard): reject prompt text that looks
+    # like CLI/kernel noise rather than something a human actually typed -- a bare flag ("-f") or a
+    # filesystem path (e.g. a Jupyter kernel connection file) should never be persisted into the corpus
+    # or trained into the bigram/transformer tables, since once in there it resurfaces in generation
+    # forever after. This is a second, independent layer -- it also protects any future call path into
+    # run()/update_raw_corpus that doesn't go through the __main__ argv parsing at all (e.g. calling
+    # run() directly from a notebook cell).
+    if prompt is None or prompt.strip().startswith("-") or "/" in prompt or "\\" in prompt:
+        return load_raw_corpus(conn)
     corpus = load_raw_corpus(conn)
     toks = _tokenize_natural(prompt)
     if toks:
@@ -6026,7 +6197,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [wants:{axis} desire={desire_val:.2f} "
                       f"gate={judged['recall_gate']:.2f} pers={judged['persistence']:.2f}]{mem_tag}  "
-                      f"{line} <-- respuesta al prompt")
+                      f"{symbolic_to_english(line)} <-- response to prompt")
             continue
         if in_window and concept_name is not None:
             line = get_concept_answer_fn(concept_name)(mind, state, norm, choose_rng,
@@ -6034,7 +6205,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             if t % 10 == 0 or in_window:
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [concept:{concept_name} g={ground_score:.2f}]  "
-                      f"{line} <-- respuesta semántica")
+                      f"{symbolic_to_english(line)} <-- semantic response")
             continue
         # NEW: cluster_name is now only a LABEL (from pick_cluster's distance
         # scoring, for the bracketed tag below and the basin-alarm override) --
@@ -6056,11 +6227,11 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
                 mind, query, choose_rng,
                 topic_vec=prompt_topic_vec if in_window else None,
                 prompt_text=prompt if in_window else None, state_vec=qvec)
-            tag = " <-- respuesta al prompt" if in_window else ""
+            tag = " <-- response to prompt" if in_window else ""
             mem_tag = f" [recalled:{recalled['word']}]" if recalled is not None else ""
             print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                   f"R={state['NegReward']:+.2f}  [{cluster_name} pers={judged['persistence']:.2f}]"
-                  f"{mem_tag}  {line}{tag}")
+                  f"{mem_tag}  {symbolic_to_english(line)}{tag}")
 
     save_blob(conn, "mind_state", mind.get_state())
     save_blob(conn, LINE_USE_COUNT_KEY, dict(_LINE_USE_COUNT))  # persist overuse-history across invocations
@@ -6086,6 +6257,15 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
     via update_raw_corpus so future training sees it too. Ctrl-C or Ctrl-D exits cleanly (final save
     already happened on the last tick, so there's nothing left to flush on the way out)."""
     import curses
+
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        # No controlling terminal (papermill/notebook kernel/piped run/CI, etc.) -- curses needs a real
+        # TTY (it calls cbreak()/nocbreak() under the hood, which raise curses.error with no terminal
+        # attached). Fall back to the one-shot batch path instead of crashing.
+        print("[kiba_cli: no controlling terminal detected (notebook/papermill/piped run) "
+              "-- curses UI unavailable, falling back to one-shot run()]")
+        run(prompt=None)
+        return
 
     def _main(stdscr):
         global _BIGRAM, _UNIGRAM, _LAST_TF_MIND_BIAS, _LAST_GEN_FLUENCY
@@ -6164,9 +6344,9 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
                     topic_vec=prompt_topic_vec if in_window else None,
                     prompt_text=pending_prompt if in_window else None,
                     state_vec=qvec)
-                tag = " <-- respuesta al prompt" if in_window else ""
+                tag = " <-- response to prompt" if in_window else ""
                 log(f"t={mind.total_steps:6d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
-                    f"[{cluster_name} pers={judged['persistence']:.2f}]  {line}{tag}")
+                    f"[{cluster_name} pers={judged['persistence']:.2f}]  {symbolic_to_english(line)}{tag}")
 
                 # ---- autosave EVERY TICK, at explicit request -- run() only does this once at exit ----
                 save_blob(conn, "mind_state", mind.get_state())
@@ -6214,9 +6394,34 @@ if __name__ == "__main__":
     # one-shot batch of ambient generation that just exits). Passing an actual prompt string on the
     # command line still goes through run() exactly as before; --cli remains valid and equivalent to
     # omitting the prompt.
-    _argv = sys.argv[1:]
+    # NEW (bugfix -- notebook/kernel launches were polluting the prompt corpus): when this script runs
+    # inside Jupyter/IPython/Colab/Kaggle, the KERNEL's own launch arguments (typically
+    # "-f /path/to/kernel-xxxx.json") land in sys.argv, not anything the human typed. Previously these
+    # got silently joined into `prompt` and treated as a real one-shot prompt -- getting tokenized,
+    # embedded, persisted into raw_prompt_corpus, and folded into the bigram/transformer tables, so
+    # tokens like "-f" and JSON-path fragments would keep resurfacing in generation forever after,
+    # regardless of what the user actually asked. Two independent guards below: (1) detect a running
+    # ipykernel outright and skip argv parsing entirely; (2) even outside a detected kernel, never accept
+    # an arg that looks like a CLI flag ("-" prefix) or a filesystem path as prompt text -- a real prompt
+    # is prose, not "-f" or "/root/.local/share/jupyter/runtime/kernel-xxxx.json".
+    _in_notebook_kernel = "ipykernel" in sys.modules or "IPython" in sys.modules
+    _argv = sys.argv[1:] if not _in_notebook_kernel else []
+    # second guard: even if somehow not caught above, strip anything flag-shaped or path-shaped before
+    # it can ever become `prompt` text -- but never strip this script's OWN recognized flags ("--cli",
+    # "--branches"), or --branches would break the same way the bug it's fixing did.
+    _KNOWN_FLAGS = {"--cli", "--branches"}
+    def _is_cli_noise(tok):
+        if tok in _KNOWN_FLAGS:
+            return False
+        return tok.startswith("-") or "/" in tok or "\\" in tok or tok.endswith(".json")
+    _argv = [a for a in _argv if not _is_cli_noise(a)]
+    # NEW (bugfix -- notebook/papermill/piped runs crashing on curses): kiba_cli() needs a real
+    # controlling terminal (it calls curses.wrapper -> cbreak()/nocbreak(), which raise curses.error
+    # with no TTY attached). kiba_cli() itself now guards this and falls back to run(prompt=None), but
+    # skip straight to that fallback here too so a non-interactive run doesn't even try curses first.
+    _has_tty = sys.stdin.isatty() and sys.stdout.isatty()
     if "--cli" in _argv:
-        kiba_cli()
+        kiba_cli() if _has_tty else run(prompt=None)
     else:
         _branches = None
         if "--branches" in _argv:
@@ -6225,6 +6430,6 @@ if __name__ == "__main__":
             _argv = _argv[:_i] + _argv[_i + 2:]
         prompt = " ".join(_argv) if _argv else None
         if prompt is None:
-            kiba_cli()
+            kiba_cli() if _has_tty else run(prompt=None)
         else:
             run(prompt=prompt, answer_branches=_branches)
