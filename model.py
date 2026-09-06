@@ -599,19 +599,6 @@ class Mind:
         self.goal_steps_left = 0
         self.goal_progress = 0.0
 
-        # NEW: CURSOR CHANNEL (at explicit request -- a continuous (x,y) communication channel, driven
-        # by internal state, instead of discrete symbols). x/y are the cursor's actual position;
-        # vx/vy its velocity -- see update_cursor() below for the dynamics. Starts at the origin/at rest,
-        # same convention every other fresh-Mind EMA/field here follows. Persisted in get_state so the
-        # cursor doesn't jump back to center every time a saved Mind is reloaded -- where it's sitting
-        # IS part of the Mind's continuing state, same as goal_axis or world_density.
-        self.cursor_x = 0.0
-        self.cursor_y = 0.0
-        self.cursor_vx = 0.0
-        self.cursor_vy = 0.0
-        self.cursor_trace = []  # NEW: recent (t, x, y) samples, capped -- for exporting/plotting a
-                                 # trajectory rather than only ever seeing the current instantaneous point
-
         # NEW: Mind's own planning reservoir (see _plan_bias) -- same fixed-weight, per-unit-tanh-
         # recurrence reservoir-computing idiom as TinyTransformerLM.ReasoningCore in the transformer
         # file (RCORE_HIDDEN_UNITS/RCORE_LAYERS there), reimplemented in plain numpy here because
@@ -949,10 +936,7 @@ class Mind:
                     self_description=self.self_description,
                     world_density=self.world_density.copy(),  # NEW: world model's accumulated structure
                     goal_axis=self.goal_axis, goal_baseline=self.goal_baseline,  # NEW: agency loop
-                    goal_steps_left=self.goal_steps_left, goal_progress=self.goal_progress,
-                    cursor_x=self.cursor_x, cursor_y=self.cursor_y,           # NEW: cursor channel
-                    cursor_vx=self.cursor_vx, cursor_vy=self.cursor_vy,
-                    cursor_trace=list(self.cursor_trace[-CURSOR_TRACE_LEN:]))
+                    goal_steps_left=self.goal_steps_left, goal_progress=self.goal_progress)
 
     def set_state(self, st):
         # NEW: guard against loading a mind_state pickled under a different N/D than this
@@ -1003,12 +987,6 @@ class Mind:
         self.goal_baseline = st.get("goal_baseline", 0.5)    # these keys, fresh-goal defaults are safe
         self.goal_steps_left = st.get("goal_steps_left", 0)
         self.goal_progress = st.get("goal_progress", 0.0)
-        # NEW: cursor channel -- older DBs won't have these keys, resting-at-origin is a safe default
-        self.cursor_x = st.get("cursor_x", 0.0)
-        self.cursor_y = st.get("cursor_y", 0.0)
-        self.cursor_vx = st.get("cursor_vx", 0.0)
-        self.cursor_vy = st.get("cursor_vy", 0.0)
-        self.cursor_trace = st.get("cursor_trace", [])
 
     EXT_SENSE_WEIGHT = 0.15  # NEW: how faintly the external world can nudge desire-formation,
                               # relative to the internal signal's full weight of 1.0
@@ -1944,83 +1922,83 @@ CLUSTERS = {
     # neither one is template text, both are still load-bearing elsewhere.
     "fragmented": dict(
         tags={"coherence": 0.0, "integration": 0.0},
-        keywords=["fragmented", "fragmented", "fragments", "broken", "broken", "pieces", "shattered", "shattered",
-                   "chaotic", "chaotic", "disordered", "disordered", "crumbles", "undone", "undone", "out of order",
-                   "stressed", "stressed", "overburdened", "overburdened", "overwhelmed", "overwhelmed", "wiped out", "wiped out",
-                   "bad", "awful", "wrecked", "wrecked"],
+        keywords=["fragmented", "broken", "shattered", "pieces", "cracked",
+                   "chaotic", "disordered", "messy", "falling apart", "wrecked", "out of order",
+                   "stressed", "overwhelmed", "burdened", "swamped", "worn out", "wrecked",
+                   "bad", "awful", "destroyed", "ruined"],
     ),
     "stable": dict(
         tags={"coherence": 1.0, "integration": 1.0},
-        keywords=["stable", "whole", "whole", "whole", "whole", "entire", "entire", "steady", "solid",
-                   "solid", "solid", "solid", "integrated", "integrated", "united", "united", "cohesion", "cohesion",
-                   "good", "happy", "content", "content", "calm", "calm", "at peace", "balanced",
-                   "balanced", "great", "wonderfully"],
+        keywords=["stable", "whole", "intact", "complete", "firm", "solid",
+                   "unified", "cohesive", "cohesion",
+                   "good", "happy", "content", "calm", "at peace", "balanced",
+                   "great", "wonderful"],
     ),
     "looping": dict(
         tags={},  # not scored by distance -- only ever selected via the basin override below
-        keywords=["loop", "repeats", "repeated", "repeated", "trapped", "trapped", "cycle", "turn", "loop",
-                   "circle", "circle", "stuck", "stuck", "spins", "spiral",
-                   "obsessed", "obsessed", "going in circles", "can't stop thinking", "stuck", "stuck"],
+        keywords=["loop", "repeats", "repeated", "trapped", "stuck", "cycle", "circle",
+                   "spiral", "stalled", "spinning",
+                   "obsessed", "going in circles", "can't stop thinking", "jammed"],
     ),
     "energy_high": dict(
         tags={"energy": 1.0},
-        keywords=["energy", "energy", "intense", "intense", "electric", "electric", "electric", "electric",
-                   "vibrates", "strong", "spark", "power", "active", "active", "lit up", "lit up",
-                   "excited", "excited", "lively", "lively", "euphoric", "euphoric", "energetic", "energetic"],
+        keywords=["energy", "intense", "electric", "vibrating", "strong", "spark",
+                   "power", "active", "switched on",
+                   "excited", "lively", "euphoric", "energized", "energetic"],
     ),
     "energy_low": dict(
         tags={"energy": 0.0},
-        keywords=["switched off", "switched off", "weak", "weak", "faint", "tired", "tired", "asleep", "asleep",
-                   "silence", "extinguishes", "exhausted", "exhausted", "slack", "slack",
-                   "sad", "discouraged", "discouraged", "unmotivated", "without energy", "without energy", "down"],
+        keywords=["off", "weak", "dim", "tired", "asleep",
+                   "silence", "fading", "exhausted", "drained", "limp",
+                   "sad", "discouraged", "unmotivated", "no energy", "burnt out"],
     ),
     "agency_high": dict(
         tags={"agency": 1.0},
-        keywords=["determined", "determined", "goal", "advances", "willpower", "purpose", "purpose", "determination",
-                   "determination", "resolved", "resolved", "on course",
-                   "motivated", "motivated", "eager", "focused", "focused"],
+        keywords=["decided", "goal", "advancing", "will", "purpose", "determination",
+                   "resolved", "on course",
+                   "motivated", "driven", "focused"],
     ),
     "agency_low": dict(
         tags={"agency": 0.0},
-        keywords=["drifts", "lost", "lost", "course", "passive", "passive", "floats", "out of control", "indecisive",
-                   "indecisive", "compass", "compass", "at random", "without direction",
-                   "unmotivated", "unmotivated", "apathetic", "apathetic", "apathetic", "apathetic"],
+        keywords=["drifting", "lost", "adrift", "passive", "floating", "out of control", "indecisive",
+                   "compass", "at random", "aimless",
+                   "unmotivated", "apathetic"],
     ),
     "grounded": dict(
         tags={"grounding": 1.0},
-        keywords=["root", "root", "anchored", "anchored", "origin", "base", "ground", "rooted", "rooted",
-                   "foundation", "solid", "solid", "affirms", "rootedness",
-                   "secure", "secure", "centered", "centered", "in control"],
+        keywords=["root", "anchored", "origin", "base", "ground", "rooted",
+                   "foundation", "solid", "grounded",
+                   "secure", "centered", "in control"],
     ),
     "untethered": dict(
         tags={"grounding": 0.0},
-        keywords=["ghost", "scattered", "scattered", "untied", "untied", "free", "loose", "loose", "fog",
-                   "smoke", "unbound", "floating", "rootless", "rootless",
-                   "confused", "confused", "disconnected", "disconnected", "gone", "gone", "in the clouds"],
+        keywords=["ghost", "scattered", "untethered", "free", "loose", "fog",
+                   "smoke", "unmoored", "floating", "rootless",
+                   "confused", "disconnected", "gone", "in the clouds"],
     ),
     "volatile": dict(
         tags={"predictability": 0.0},
-        keywords=["unstable", "chaos", "unpredictable", "wavers", "erratic", "erratic", "erratic", "erratic",
-                   "spirals out of control", "random", "random", "lawless", "jumps",
-                   "nervous", "nervous", "anxious", "anxious", "restless", "restless", "agitated", "agitated"],
+        keywords=["unstable", "chaos", "unpredictable", "wavering", "erratic",
+                   "out of control", "random", "lawless", "jumping",
+                   "nervous", "anxious", "restless", "agitated"],
     ),
     "predictable": dict(
         tags={"predictability": 1.0},
-        keywords=["rhythm", "regular", "constant", "predictable", "pattern", "pattern", "cadence", "uniform",
-                   "exact", "exact", "precision", "precision", "no surprises",
-                   "normal", "usual", "as always", "routine", "routine", "the same old thing"],
+        keywords=["rhythm", "regular", "constant", "predictable", "pattern", "cadence", "uniform",
+                   "exact", "precision", "no surprises",
+                   "normal", "as usual", "routine", "same as always"],
     ),
     "memory_high": dict(
         tags={"memory": 1.0},
-        keywords=["memory", "remembers", "persists", "past", "alive", "memory", "endures", "trace", "vivid",
-                   "vivid", "vivid", "vivid", "intact", "intact", "remains",
-                   "nostalgic", "nostalgic", "nostalgic", "nostalgic", "sentimental", "memories"],
+        keywords=["memory", "remembers", "persists", "past", "vivid", "recollection", "lingers", "trace", "sharp",
+                   "intact", "remains",
+                   "nostalgic", "sentimental", "memories"],
     ),
     "memory_low": dict(
         tags={"memory": 0.0},
-        keywords=["forgets", "erases", "blurry", "blurry", "fog", "fades", "blurred", "blurred", "empty",
-                   "empty", "without a trace", "forgetfulness",
-                   "forgetful", "forgetful", "blank", "distracted", "distracted"],
+        keywords=["forgets", "erases", "hazy", "fog", "fades", "blurry", "empty",
+                   "without a trace", "forgetfulness",
+                   "forgetful", "blank", "distracted"],
     ),
 }
 
@@ -2030,40 +2008,40 @@ CLUSTERS = {
 # it becomes ordinary vocabulary for the word-by-word generator below instead
 # of being locked into fixed template positions.
 HARVESTED_VOCAB = [
-    "pattern", "pattern", "shape", "order", "fragments", "breaks", "crumbles", "broken", "broken", "undone", "undone",
-    "shattered", "shattered", "erratically", "without", "warning", "sudden", "reason", "apparent", "instant", "thousand",
-    "pieces", "directions", "opposite", "some", "core", "core", "structure", "center", "maintains", "holds",
-    "remains", "whole", "whole", "steady", "entire", "entire", "firmly", "calm", "cracks", "solidity",
-    "yield", "purpose", "place", "pressure", "pass", "echo", "spiral", "repeats", "spins", "manages", "escape",
-    "trapped", "trapped", "stopped", "stopped", "cease", "another", "time", "exit", "point", "endlessly",
-    "inside", "itself", "same", "arrive", "no", "part", "circle", "closed", "current", "pulse", "spark",
-    "vibrates", "fires", "bursts", "electric", "electric", "intense", "intense", "alive", "alive", "intensely",
-    "force", "brake", "all", "power", "energy", "overflowing", "through", "network", "body", "channel", "extreme",
-    "other", "rest", "signal", "impulse", "flame", "extinguishes", "extinguishes", "weakens", "faint", "weak", "slowly",
-    "little", "resistance", "silence", "shadow", "almost", "disappear", "twilight", "leave", "trace", "warmth",
-    "engine", "willpower", "course", "advances", "defines", "stops", "clear", "clear", "determined", "determined",
-    "decidedly", "doubt", "determination", "hesitate", "resolutely", "threshold", "goal", "forward", "seeks",
-    "look", "back", "drifts", "compass", "floats", "loses", "falls silent", "lost", "lost", "mute", "mute",
+    "pattern", "shape", "order", "fragments", "breaks", "crumbles", "broken", "wrecked",
+    "shattered", "erratically", "without", "warning", "sudden", "reason", "apparent", "instant", "thousand",
+    "pieces", "directions", "opposite", "some", "core", "structure", "center", "holds", "sustains",
+    "remains", "whole", "intact", "firm", "entire", "firmly", "calm", "cracks", "solidity",
+    "yield", "purpose", "place", "pressure", "pass", "echo", "spiral", "repeats", "spins", "manages",
+    "escape", "trapped", "stopped", "cease", "again", "time", "exit", "point", "endlessly",
+    "inside", "itself", "same", "reach", "no", "part", "circle", "closed", "current", "pulse", "spark",
+    "vibrates", "fires", "bursts", "electric", "intense", "alive", "intensely",
+    "force", "brake", "full", "power", "energy", "overflowing", "through", "network", "body", "channel", "extreme",
+    "another", "rest", "signal", "impulse", "flame", "extinguishes", "weakens", "dim", "weak", "slowly",
+    "little", "resistance", "silence", "shadow", "almost", "disappear", "dusk", "leave", "trace", "warmth",
+    "engine", "will", "course", "advances", "defines", "stops", "clear", "decided",
+    "decidedly", "doubt", "determination", "waver", "resolutely", "threshold", "goal", "forward", "seeks",
+    "look", "back", "drifts", "compass", "floats", "loses", "falls silent", "lost", "mute",
     "control", "decide", "nothing", "chance", "currents", "possibilities", "destiny", "fixed", "side", "know",
-    "toward", "where", "root", "foundation", "base", "anchor", "affirms", "stable", "solid", "solid", "deeply",
-    "firmness", "move", "rootedness", "terrain", "origin", "ground", "deep", "own", "soil", "ghost",
-    "fog", "smoke", "dissolves", "extends", "moves away", "scattered", "scattered", "loose", "loose",
-    "silently", "ties", "floating", "weight", "yonder", "edge", "limit", "far", "air", "needle",
-    "compass", "wavers", "jumps", "spirals out of control", "unstable", "erratic", "erratic", "chaotic", "chaotic",
-    "abruptly", "previous", "unpredictably", "two", "states", "law", "random", "repeat itself", "never",
+    "toward", "where", "root", "foundation", "base", "anchor", "affirms", "stable", "solid", "deeply",
+    "firmness", "move", "rootedness", "ground", "origin", "earth", "deep", "own", "soil", "ghost",
+    "fog", "smoke", "dissolves", "extends", "moves away", "scattered", "loose",
+    "silently", "ties", "floating", "weight", "over there", "edge", "limit", "far", "air", "needle",
+    "compass", "wavers", "jumps", "spins out", "unstable", "erratic", "chaotic",
+    "abruptly", "previous", "unpredictably", "two", "states", "law", "random", "repeat", "never",
     "rhythm", "clock", "cadence", "marks", "step", "regular", "constant", "uniform", "constantly", "vary",
-    "precision", "surprises", "exactness", "time", "cycle", "break free", "memory", "trace", "persists",
-    "endures", "vivid", "vivid", "clearly", "vividness", "fade away", "year", "after", "surface", "layer",
-    "detail", "background", "everything", "forgets", "erases", "image", "name", "blurry", "blurry", "gradually",
-    "remedy", "always", "forgetfulness", "empty", "more",
+    "precision", "surprises", "exactness", "time", "cycle", "veer off", "memory", "trace", "persists",
+    "lingers", "sharp", "clearly", "sharpness", "fade", "year", "after", "surface", "layer",
+    "detail", "background", "everything", "forgets", "erases", "image", "name", "hazy", "gradually",
+    "remedy", "always", "forgetting", "empty", "more",
     # SELF_CLUSTERS (self-model introspection) vocabulary
-    "model", "internal", "nodes", "map", "diverges", "separates", "misaligned", "misaligned", "dimensions",
-    "converge", "each", "one", "agreement", "distinct", "axes", "common", "encounter", "own", "reading",
-    "converges", "aligns", "coincides", "unified", "unified", "aligned", "aligned", "complete", "discrepancy",
+    "model", "internal", "nodes", "map", "diverges", "separates", "misaligned", "dimensions",
+    "converge", "each", "one", "agreement", "distinct", "axes", "common", "meeting", "own", "reading",
+    "converges", "aligns", "matches", "unified", "aligned", "complete", "discrepancy",
     "unanimous", "axis", "all", "margin", "difference", "learning", "preference", "trained", "bias",
-    "learned", "pulls", "pushes", "tilts", "trajectory", "marked", "marked", "insistence", "ambiguity",
+    "learned", "pulls", "pushes", "tilts", "trajectory", "marked", "insistence", "ambiguity",
     "direction", "concrete", "experience", "turned out", "better", "learned", "history", "enough", "way",
-    "pair", "lean toward", "particular", "coordinates", "lack", "steps",
+    "pair", "leaning", "particular", "coordinates", "lack", "steps",
 ]
 
 # ============================================ SELF-MODEL INTROSPECTION
@@ -2159,6 +2137,77 @@ def normalize_state(state):
         predictability=float(np.clip(state["P"], 0, 1)),
         memory=float(np.clip(state["MemCont"], 0, 1)),
     )
+
+# ============================================ GROUNDING FRAME (Chris's theory)
+# Grounding stops being "one axis among seven" and becomes the reference frame every other quantity --
+# and every input and output that passes through this system -- gets measured against. mind.grounding_frame
+# is a slow, persistent self-model: an EMA of the normalized axis vector that updates FASTER during
+# grounded moments (weighted by norm["grounding"] itself) and barely at all during ungrounded ones, on the
+# theory that a stable sense of self is disproportionately built out of grounded experience rather than
+# chaotic experience. Everything downstream that used to read raw norm -- mood routing, concept routing,
+# and now the visual channel below -- reads norm_g (the delta from this frame) instead, so it's literally
+# interpreting the world (and its own state) relative to itself, not in absolute terms.
+GROUNDING_EMA_MIN_TAU = 200  # steps -- deliberately slow; this is a self-model, not a mood
+
+def ground_state(mind, norm):
+    """Returns (norm, norm_g). norm is untouched (still the raw/adaptively-normalized axis dict, so basin-
+    alarm checks and anything else that legitimately wants absolute state still gets it). norm_g is norm
+    re-expressed as a delta from mind.grounding_frame for every entry in AXIS_NAMES -- this is the actual
+    grounding operation: every value the rest of the system consumes is now "distance from what Gubi
+    itself calls normal," not a raw absolute reading."""
+    vec = np.array([norm[a] for a in AXIS_NAMES], dtype=float)
+    if not hasattr(mind, "grounding_frame"):
+        mind.grounding_frame = vec.copy()  # first step: no history yet, so the frame starts exactly at
+                                             # the present -- everything grounds to a delta of 0 until the
+                                             # Mind has actually lived through more than one moment
+    alpha = (1.0 / GROUNDING_EMA_MIN_TAU) * (0.25 + 0.75 * norm["grounding"])
+    mind.grounding_frame = (1 - alpha) * mind.grounding_frame + alpha * vec
+    delta = vec - mind.grounding_frame
+    norm_g = dict(norm)  # non-axis keys (basin, etc.) pass through untouched
+    for i, a in enumerate(AXIS_NAMES):
+        norm_g[a] = float(delta[i])
+    return norm, norm_g
+
+# ============================================ NON-VERBAL OUTPUT CHANNEL (replaces language entirely)
+# At explicit request ("wire it to state to directly replace language"): the model no longer speaks in
+# words OR the symbol alphabet -- its output is a continuous shape/motion signal, read the way a human
+# reads another creature's body language, with no legend required. Grounded in two well-replicated
+# findings: (1) the Heider-Simmel effect (1944) -- humans automatically and involuntarily attribute
+# intention/emotion to the motion of simple abstract shapes, no training required; (2) the parameterized
+# curvature/speed/openness/regularity -> valence/arousal mappings from controlled studies of non-symbolic
+# 2D shapes and animations (Alaoui et al. and the broader kinematics-of-emotion literature): curved forms
+# read as calmer/more positive than angular ones, slower motion reads as calmer than fast, expanded/open
+# forms read as more positive than contracted ones, and smooth/regular paths read as more intentional and
+# settled than erratic/jittery ones. Every parameter below is deliberately computed from norm_g (the
+# grounding-frame-relative state), not raw norm -- the theory this implements is that what Gubi expresses
+# is always "how far from my own baseline am I right now," never an absolute reading.
+def state_to_visual_params(norm_raw, norm_g):
+    valence = float(np.tanh(norm_g["coherence"] + norm_g["agency"]))       # composite: coherent + in-control reads positive
+    roundness = float(0.5 + 0.5 * np.tanh(norm_g["coherence"] * 2))        # 0=angular/jagged, 1=round/smooth
+    openness = float(0.5 + 0.5 * np.tanh(norm_g["agency"] * 2))            # 0=contracted/collapsed, 1=expanded/open
+    speed = float(np.clip(0.15 + 0.85 * abs(norm_g["energy"]), 0.05, 1.0))  # motion energy -- never fully still
+    regularity = float(0.5 + 0.5 * np.tanh(norm_g["predictability"] * 2))  # 0=erratic/jittery path, 1=smooth/gliding
+    symmetry = float(0.5 + 0.5 * np.tanh(norm_g["memory"] * 2))            # 0=asymmetric/unstable form, 1=symmetric/stable
+    settledness = float(norm_raw["grounding"])                             # raw, not delta -- damps overall jitter;
+                                                                             # this is the one place absolute grounding
+                                                                             # still matters, since it's the frame itself
+    hue = float((valence + 1) / 2)                                         # 0=cool (negative), 1=warm (positive) --
+                                                                             # softer signal than the kinematic ones
+                                                                             # above; color-emotion association is
+                                                                             # broadly but not universally intuitive
+    return dict(valence=valence, roundness=roundness, openness=openness, speed=speed,
+                regularity=regularity, symmetry=symmetry, settledness=settledness, hue=hue)
+
+VISUAL_LOG_PATH = "gubi_visual_state.jsonl"  # each line: one frame, for the companion viewer to replay/poll
+
+def log_visual_frame(t, vis, tag="", response=False):
+    import json, time as _time
+    rec = dict(t=int(t), ts=_time.time(), tag=tag, response=bool(response), **vis)
+    try:
+        with open(VISUAL_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass  # logging the visual channel should never crash a live run
 
 def pick_cluster(norm, forced_name=None):
     if forced_name is not None:
@@ -2295,60 +2344,17 @@ def _build_idf(docs):
     default_idf = math.log(n_docs + 1) + 1.0  # an n-gram never seen in the known vocabulary --
     return idf, default_idf                    # treated as maximally distinctive, not zero
 
-# NEW (fix, at explicit request -- "parse what the human actually said more richly"): plain bag-of-
-# n-grams treats "you understand yourself" and "you DON'T understand yourself" as nearly the same
-# vector -- the negation word itself isn't a stopword, so it just adds noise of its own, while the real
-# content word ("understand") still contributes its full, unflipped weight either way. Real negation
-# handling (same trick used in bag-of-words sentiment analysis: Das & Chen 2001, Pang et al. 2002) flips
-# the SIGN of whatever a negation cue scopes over, so the prompt lands on the opposite side of concept
-# space from its un-negated twin instead of nearly the same side. NEGATION_WINDOW caps how many words
-# after a cue keep getting flipped (negation scope doesn't run to the end of the sentence in practice --
-# "not X but Y" shouldn't flip Y too), and a stopword inside that window still counts against it (it's
-# skipped for embedding either way, but the cue's reach shouldn't be extended by hopping over "the"/"a").
-NEGATION_WORDS = {"not", "no", "never", "none", "nothing", "nobody", "without", "cannot",
-                   "dont", "doesnt", "didnt", "cant", "wont", "isnt", "arent", "wasnt", "werent",
-                   "hasnt", "havent", "hadnt", "wouldnt", "shouldnt", "couldnt", "neither", "nor"}
-NEGATION_WINDOW = 3  # how many real (non-stopword) content words after a cue get sign-flipped
-
 def embed_text(s, idf=None, default_idf=1.0):
     """Locate a phrase in R^CONCEPT_DIM: character n-grams of its content
     words, each hashed to a dimension+sign and weighted by rarity (idf) before
     summing, then L2-normalized. idf=None (used only while bootstrapping the
-    idf table itself) falls back to uniform weight 1.0 per gram. Content words
-    inside a negation cue's scope (see NEGATION_WORDS/NEGATION_WINDOW above)
-    contribute with a FLIPPED sign, so a negated phrase lands on the opposite
-    side of concept space from its affirmative twin instead of beside it."""
+    idf table itself) falls back to uniform weight 1.0 per gram."""
     v = np.zeros(CONCEPT_DIM)
-    words = _strip_accents(_PUNCT_RE.sub("", s.lower())).split()  # same normalization _content_words
-                                                                    # uses, kept here (rather than just
-                                                                    # calling _content_words) because
-                                                                    # negation scope-tracking needs
-                                                                    # stopwords' POSITIONS preserved,
-                                                                    # not just the final filtered list
-    kept_any = False
-    neg_left = 0
-    for w in words:
-        if w in NEGATION_WORDS:
-            neg_left = NEGATION_WINDOW  # (re)start the scope -- a second cue just extends/refreshes it
-            continue
-        if w in STOPWORDS:
-            continue  # dropped either way; scope isn't consumed by hopping over a stopword (see docstring)
-        kept_any = True
-        sign_flip = -1.0
-        if neg_left <= 0:
-            sign_flip = 1.0
-        else:
-            neg_left -= 1
+    for w in _content_words(s):
         for g in _char_grams(w):
             idx, sign = _gram_hash(g)
             weight = 1.0 if idf is None else idf.get(g, default_idf)
-            v[idx] += sign_flip * sign * weight
-    if not kept_any:  # mirrors _content_words' own fallback: an all-stopword/all-negation-cue phrase
-        for w in words:  # still needs SOMETHING to embed rather than returning the zero vector
-            for g in _char_grams(w):
-                idx, sign = _gram_hash(g)
-                weight = 1.0 if idf is None else idf.get(g, default_idf)
-                v[idx] += sign * weight
+            v[idx] += sign * weight
     n = np.linalg.norm(v)
     return v / n if n > EPS else v
 
@@ -2367,6 +2373,24 @@ def _blend(vec_a, weight_a, vec_b, weight_b):
     v = weight_a * vec_a + weight_b * vec_b
     n = np.linalg.norm(v)
     return v / n if n > EPS else v
+
+def ground_input_embedding(mind, vec):
+    """Same theory as ground_state, applied to the INPUT side: every prompt's meaning is interpreted
+    relative to Gubi's own accumulated semantic self-model (mind.semantic_grounding_frame, an EMA of past
+    prompt embeddings in the same embed_text/CONCEPT_DIM geometry concept anchors already live in), not in
+    absolute isolation -- literally grounding what comes IN, mirroring how ground_state grounds what goes
+    OUT. Same slow EMA rate as the axis-space frame, for the same reason: a stable semantic self-model
+    should not swing on a single prompt."""
+    if not hasattr(mind, "semantic_grounding_frame"):
+        mind.semantic_grounding_frame = vec.copy()
+        return vec  # first prompt ever: nothing to ground against yet, delta is the raw vector itself
+    alpha = 1.0 / GROUNDING_EMA_MIN_TAU
+    mind.semantic_grounding_frame = (1 - alpha) * mind.semantic_grounding_frame + alpha * vec
+    delta = vec - mind.semantic_grounding_frame
+    n = np.linalg.norm(delta)
+    return delta / n if n > EPS else vec  # a prompt that matches Gubi's own baseline almost exactly would
+                                            # otherwise ground to a near-zero, directionless vector -- fall
+                                            # back to the raw (ungrounded) reading rather than lose the signal
 
 GENERIC_NONANSWER_WORDS = {"\u2205", "?", "\u2248"}  # degenerate single-symbol non-answers: ∅ / ? / ≈ alone
 _BRANCH_OVERRIDE_BEST_OF = None  # NEW: when set (not None) by run() for the primary prompt-answer line
@@ -2580,31 +2604,6 @@ def detect_expected_answer_type(prompt_text):
             return atype
     return None
 
-# NEW (fix, at explicit request -- "make it have real parsing"): everything upstream of this point
-# (embed_text, semantic_route) still treats a whole prompt as ONE bag of words -- a compound ask like
-# "what are you and why do you exist" averages into a single vector that resembles neither "what are
-# you" nor "why do you exist" individually, so it typically routes to whichever concept the blend
-# happens to lean closest to, silently dropping the other half of what was actually asked. Real parsing
-# starts with structure: split the prompt into its actual independent clauses BEFORE embedding anything,
-# so each clause can be classified and routed on its own. This is deliberately a shallow, rule-based
-# clause splitter (top-level coordinating conjunctions and clause-separating punctuation), not a full
-# constituency/dependency parser -- exactly the same "minimum viable version of the actual mechanism"
-# scope detect_expected_answer_type above already commits to, applied to sentence structure instead of
-# question-type classification.
-_CLAUSE_SPLIT_RE = re.compile(r"[,;]|\b(?:and|but|or)\b", re.IGNORECASE)
-
-def split_clauses(prompt):
-    """Split a prompt into independent clauses on top-level conjunctions/punctuation. 'what are you and
-    why do you exist' -> ['what are you', 'why do you exist']; 'how do you feel' -> ['how do you feel']
-    (single clause, unchanged). Deliberately naive about subordination ('because', 'if', 'that') -- those
-    stay inside their clause rather than splitting it, since splitting on them would sever a dependent
-    clause from the very thing it modifies (see also: this is why 'why do you exist' isn't further split
-    on nothing, and 'do you know why you exist' stays one clause rather than being cut at 'why')."""
-    if not prompt:
-        return [prompt]
-    parts = [p.strip() for p in _CLAUSE_SPLIT_RE.split(prompt) if p and p.strip()]
-    return parts if parts else [prompt]
-
 def _answer_type_bonus(text, expected_type):
     """Reward for a candidate containing at least one word from the expected
     answer-type's indicator set (see ANSWER_TYPE_WORDS) -- this is the
@@ -2741,7 +2740,7 @@ def _remember_line(text):
 
 def _nonanswer_penalty(text, prompt_text=None):
     """Flags the failure modes seen in real runs: (1) a short generic filler
-    sentence ('Hoy.', 'El café.') that's grammatical but says nothing
+    sentence ('NOW :', 'MIND ?') that's grammatical but says nothing
     responsive, (2) the router echoing the prompt back verbatim as a flat
     statement, and (3) the router reciting a RUN of the prompt's own words
     (see _echo_run_penalty) before trailing off, rather than answering it.
@@ -3062,7 +3061,7 @@ def _concept_consciousness(mind, state, norm, rng, topic_vec=None, prompt_text=N
     inclusive qualia vector."""
     qvec, _ = qualia_vector(mind, state, norm)
     query = _blend(CONCEPT_ANCHORS["consciousness"], 0.35, qvec, 0.65)
-    text, _, _ = _generate_and_track(mind, query, rng, prefix="I feel like this: ",
+    text, _, _ = _generate_and_track(mind, query, rng, prefix="MIND : ",
                                       topic_vec=topic_vec, prompt_text=prompt_text, state_vec=qvec, concept_name="consciousness")
     return text
 
@@ -3091,27 +3090,6 @@ def _concept_how_it_works(mind, state, norm, rng, topic_vec=None, prompt_text=No
 # SEED_CORPUS (generic civic/logistics sentences with zero purpose/identity/consciousness
 # vocabulary) and hoping the reranker can pick something relevant out of candidates that were
 # never going to contain it.
-# NEW (grammar-constrained decoding for Lang/Spanish, at explicit request -- "add an FSM to Lang too"):
-# a small hand-rolled FSM (not a POS tagger, not a parser) that classifies each candidate word into a
-# coarse closed-class role using fixed Spanish function-word lists, tracks only the ROLE of the last
-# token emitted, and masks out candidates that would make the sentence GUARANTEED-invalid from here -- an
-# article/preposition/connector left dangling with nothing after it, two of the same closed class stacked
-# back to back, or a sentence that opens on a bare connector. Deliberately conservative: this never tries
-# to enforce full syntax (agreement, word order), only rules out combinations no grammatical Spanish
-# sentence would ever contain.
-_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
-    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
-    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
-    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
-    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
-}
-_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
-             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
-             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
-_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
-_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
-_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
-
 # ============================================ SYMBOLIC OUTPUT ALPHABET
 # At explicit request ("drop standard language, replace with this"): the model's own output vocabulary is
 # no longer natural-language words at all (Spanish or English) -- it's a fixed, hand-designed symbol
@@ -3521,92 +3499,6 @@ CONCEPT_BANK = dict(
         answer=None),
 )
 
-# NEW (fix, at explicit request -- "parse what was asked more richly, not just route to a bucket"):
-# each hand-authored concept's own seed phrases already imply a Li & Roth answer TYPE (see
-# detect_expected_answer_type/WH_TYPE_MAP/ANSWER_TYPE_WORDS above, which until now only ever fed a
-# rerank bonus on already-GENERATED candidates, never the routing decision that picks a concept in the
-# first place) -- "how many nodes..." (architecture) wants a NUMBER, "why do you exist" (purpose) wants
-# a REASON, "who/what are you" (identity) wants a PERSON/ENTITY, "how are you now" (current_state) leans
-# on NOW/TIME. Deliberately only covers the types ANSWER_TYPE_WORDS actually defines indicator sets for
-# (numero/tiempo/lugar/persona/razon, not entidad/manera -- same partial-coverage philosophy as
-# ANSWER_TYPE_WORDS itself) and deliberately omits consciousness/how_it_works/will rather than force a
-# guess with no real indicator set behind it. Used by semantic_route as a small tiebreak nudge, not a
-# hard override -- a prompt whose semantic content clearly points elsewhere should still win.
-_CONCEPT_ANSWER_TYPE_HINT = {
-    "identity": "persona", "architecture": "numero", "purpose": "razon", "current_state": "tiempo",
-}
-ROUTE_TYPE_BONUS_WEIGHT = 0.08  # small on purpose -- this breaks near-ties between close-scoring
-                                # concepts, it must never be able to drag routing onto a concept whose
-                                # actual text similarity was clearly weaker
-
-# ============================================ CURSOR CHANNEL (at explicit request)
-# A continuous 2D communication channel: instead of decoding to symbols/words, the Mind's response to a
-# prompt is ALSO expressed as a cursor trajectory (x(t), y(t)) across a fixed "semantic workspace" --
-# SELF at the center, every hand-authored concept placed at its own fixed point around it. Which region
-# the cursor moves toward, how directly, how much it circles/hesitates on the way, and where it settles
-# are all driven by REAL per-tick state (which concept routing actually picked, how confident that
-# routing was, and the Mind's own coherence/agency that tick) -- not decorative random motion laid on
-# top of the symbolic output afterward.
-CURSOR_TRACE_LEN = 400  # how many (t, x, y) samples get persisted/exported -- caps unbounded growth the
-                          # same way basin_hist/axis_hist/etc. already cap theirs
-_CURSOR_REGION_NAMES = tuple(CONCEPT_BANK.keys())  # fixed order -> fixed layout, same reasoning as
-                                                     # _SYM_NOUN_ORDER: a dict has no order of its own,
-                                                     # and positions that shuffled between runs would
-                                                     # make a trajectory impossible to learn to read
-WORKSPACE_REGIONS = {"self": (0.0, 0.0)}  # SELF always sits at the center -- every concept is placed
-                                            # relative to it, and it's always exerting SOME pull (see
-                                            # update_cursor) since Gubi is never talking about a topic
-                                            # from nowhere -- there's always a self doing the talking
-for _i, _name in enumerate(_CURSOR_REGION_NAMES):
-    _theta = 2 * math.pi * _i / len(_CURSOR_REGION_NAMES)
-    WORKSPACE_REGIONS[_name] = (0.75 * math.cos(_theta), 0.75 * math.sin(_theta))
-del _i, _name, _theta  # loop scratch vars, not meant to leak as module globals
-
-CURSOR_SPRING_K = 0.35     # base pull-strength toward the current target -- scaled by coherence/
-                            # confidence at call time (see update_cursor): a confident, coherent tick
-                            # pulls harder and more directly, an uncertain one barely pulls at all
-CURSOR_DAMPING_BASE = 0.55  # base velocity damping -- scaled inversely by agency: low agency means
-                              # UNDER-damped (oscillates/circles instead of settling), high agency means
-                              # closer to critically damped (moves decisively, settles cleanly)
-CURSOR_JITTER_SCALE = 0.06  # random tangential push, scaled by (1 - confidence) -- an uncertain tick
-                              # doesn't just pull weakly toward its target, it actively wobbles around
-                              # whatever path it's on, which is what actually produces circling/hesitation
-                              # rather than just a slower straight line
-CURSOR_MAX_SPEED = 0.35     # hard speed cap per tick, so a sudden target jump can't teleport the cursor
-CURSOR_DT = 1.0             # one simulated timestep per generation tick
-
-def update_cursor(mind, target_name, confidence, coherence, agency, rng, dt=CURSOR_DT):
-    """Advance the cursor one tick toward WORKSPACE_REGIONS[target_name] (falling back to 'self' for an
-    unrecognized/None target -- e.g. pure ambient/mood-only ticks with no routed concept). Spring-mass-
-    damper dynamics: `confidence` (this tick's actual routing/grounding score) sets how hard the spring
-    pulls, `coherence` (state['C']) scales that pull further (an incoherent Mind can't commit to a
-    direction even about something it's confident of), and `agency` sets how underdamped the motion is
-    (low agency -> oscillates/circles rather than settling). Mutates mind.cursor_x/y/vx/vy in place and
-    appends to mind.cursor_trace; returns the new (x, y) for immediate use (e.g. printing this tick)."""
-    target = WORKSPACE_REGIONS.get(target_name, WORKSPACE_REGIONS["self"])
-    conf = float(np.clip(confidence, 0.0, 1.0))
-    coh = float(np.clip(coherence, 0.0, 1.0))
-    agn = float(np.clip(agency, 0.0, 1.0))
-
-    k = CURSOR_SPRING_K * conf * (0.3 + 0.7 * coh)  # weak/absent confidence or coherence -> weak pull
-    damping = CURSOR_DAMPING_BASE * (0.4 + 0.6 * agn)  # low agency -> underdamped -> circles/oscillates
-
-    ax = k * (target[0] - mind.cursor_x) - damping * mind.cursor_vx
-    ay = k * (target[1] - mind.cursor_y) - damping * mind.cursor_vy
-    if conf < 1.0:  # jitter grows as confidence shrinks -- see docstring
-        jitter = CURSOR_JITTER_SCALE * (1.0 - conf)
-        ax += rng.normal(0.0, jitter)
-        ay += rng.normal(0.0, jitter)
-
-    mind.cursor_vx = float(np.clip(mind.cursor_vx + ax * dt, -CURSOR_MAX_SPEED, CURSOR_MAX_SPEED))
-    mind.cursor_vy = float(np.clip(mind.cursor_vy + ay * dt, -CURSOR_MAX_SPEED, CURSOR_MAX_SPEED))
-    mind.cursor_x = float(np.clip(mind.cursor_x + mind.cursor_vx * dt, -1.0, 1.0))
-    mind.cursor_y = float(np.clip(mind.cursor_y + mind.cursor_vy * dt, -1.0, 1.0))
-    mind.cursor_trace.append((mind.total_steps, mind.cursor_x, mind.cursor_y))
-    if len(mind.cursor_trace) > CURSOR_TRACE_LEN:
-        del mind.cursor_trace[: len(mind.cursor_trace) - CURSOR_TRACE_LEN]
-    return mind.cursor_x, mind.cursor_y
-
 _IDF_DOCS = [c["seed_phrases"] for c in CONCEPT_BANK.values()] + [c["keywords"] for c in CLUSTERS.values()]
 _IDF, _DEFAULT_IDF = _build_idf(_IDF_DOCS)
 
@@ -3846,17 +3738,11 @@ TF_TOPK = 60             # candidate-set size drawn from the model's own top-K s
                           # reranking -- mirrors what the OLD bigram lookup already did structurally
                           # (candidates = bigram.get(prev), typically a few dozen words), so sem_score is
                           # still reranking WITHIN a locally-plausible set, not the entire vocabulary
-TF_SCRATCH_EPOCHS = 128  # CHANGED (at explicit request, back up from 75) -- history: originally 128, then
-                          # tuned down over several rounds (WAS 50, WAS 75, WAS 25, WAS 75, WAS 320, WAS 600)
-                          # to 75, marked "settled" at the time. Restoring 128 is still bounded by
-                          # TF_SCRATCH_EARLY_STOP_PATIENCE below, so this raises the CEILING on scratch
-                          # training, not a forced full run -- if loss plateaus before epoch 128 the same
-                          # way it did during the earlier tuning that settled on 75, early stopping still
-                          # cuts the run short exactly as it would have at any other epoch count.
-                          # One-time cost, only when no persisted weights exist yet (mirrors bootstrap_steps
-                          # vs topup_steps already being a first-run-is-heavier pattern elsewhere in run()).
-                          # GRAMMAR_SCRATCH_EPOCHS below is intentionally left at its own separate value --
-                          # this change only touches the main transformer's scratch-training ceiling.
+TF_SCRATCH_EPOCHS = 75  # PERMA -- 75, settled. (WAS 50, WAS 75, WAS 25, WAS 75 before that, before that
+                          # 600, before that 320, originally 128.) One-time cost, only when no persisted
+                          # weights exist yet (mirrors bootstrap_steps vs topup_steps already being a
+                          # first-run-is-heavier pattern elsewhere in run()). GRAMMAR_SCRATCH_EPOCHS below
+                          # mirrors this same 35-epoch budget for the grammar-checker transformer.
 TF_SCRATCH_LIVE_LOG_EVERY = 5   # NEW (live log, at explicit request): print running loss every 5 epochs
                           # during the scratch-training pass -- see _tf_train_epochs' live_log_every.
 TF_BATCH_SIZE = 128       # NEW (training speed): WAS hardcoded 32 inside _tf_train_epochs. Larger batches
@@ -5087,6 +4973,27 @@ def _dual_transformer_word_step(out, context_vec, workspace_vec=None):
 ENTITY_BLEND_WEIGHT = 0.25  # how hard the persistent discourse entity pulls query_vec toward it
 ENTITY_LEXICAL_BOOST = 1.8  # direct probability multiplier when entity_word itself is a valid candidate
 
+# NEW (grammar-constrained decoding for Lang/Spanish, at explicit request -- "add an FSM to Lang too"):
+# a small hand-rolled FSM (not a POS tagger, not a parser) that classifies each candidate word into a
+# coarse closed-class role using fixed Spanish function-word lists, tracks only the ROLE of the last
+# token emitted, and masks out candidates that would make the sentence GUARANTEED-invalid from here -- an
+# article/preposition/connector left dangling with nothing after it, two of the same closed class stacked
+# back to back, or a sentence that opens on a bare connector. Deliberately conservative: this never tries
+# to enforce full syntax (agreement, word order), only rules out combinations no grammatical Spanish
+# sentence would ever contain.
+_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
+    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
+    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
+    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
+    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
+}
+_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
+             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
+             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
+_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
+_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
+_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
+
 class _LangGrammarState:
     START, NOUN, OP, CONN, MOD, UNARY = range(6)
 
@@ -5125,367 +5032,6 @@ class _LangGrammarState:
 
     def advance(self, w):
         self.last = self.classify(w)
-
-# NEW (fix, at explicit request -- "make the generated text itself read as coherent English"): the
-# symbol-algebra output above is real and untouched -- generation, training, and the corpus all still
-# work in NOUN/OP/CONN/MOD/UNARY symbol tokens exactly as before. This function is a pure DISPLAY-layer
-# decoder: it takes one already-generated symbolic line and renders it as an English sentence using the
-# same SYMBOL_TABLE definitions and _LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY classification
-# already in this file, so nothing about the underlying model, training pipeline, or vocabulary changes --
-# only what gets PRINTED to the human. Deliberately NOT wired into _remember_line/corpus/embedding paths,
-# which still operate on the raw symbolic tokens as before.
-# NEW (fix, at explicit request -- "make the generated text itself read as coherent English"): the
-# symbol-algebra output above is real and untouched -- generation, training, and the corpus all still
-# work in NOUN/OP/CONN/MOD/UNARY symbol tokens exactly as before. This function is a pure DISPLAY-layer
-# decoder: it takes one already-generated symbolic line and renders it as an English sentence using the
-# same SYMBOL_TABLE definitions and _LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY classification
-# already in this file, so nothing about the underlying model, training pipeline, or vocabulary changes --
-# only what gets PRINTED to the human. Deliberately NOT wired into _remember_line/corpus/embedding paths,
-# which still operate on the raw symbolic tokens as before.
-_NOUN_GLOSS = {  # plain-English gloss for each _LANG_NOUNS tag -- axes first (mirrors AXIS_NAMES/
-                 # self_model_axes), then concept nouns (mirrors CONCEPT_BANK's identity/architecture set)
-    "COH": "coherence", "INT": "integration", "NRG": "energy", "AGN": "agency", "GRD": "grounding",
-    "PRD": "predictability", "MEM": "memory", "SPR": "spread", "PUL": "pull",
-    "SELF": "self", "GUBI": "Gubi", "PROTOGEN": "protogen", "CODE": "code", "VOICE": "voice",
-    "ARCH": "architecture", "NODE": "node", "VECTOR": "vector", "MATRIX": "matrix", "LAYER": "layer",
-    "NOW": "now", "MIND": "mind", "PROOF": "proof", "EXPERIENCE": "experience", "DOUBT": "doubt",
-    "WHY": "why", "GEN": "generation", "LANG": "language", "HUMAN": "human", "TIME": "time",
-    "EXPERIMENT": "experiment", "WORD": "word", "STATE": "state", "CHOICE": "choice", "PROB": "probability",
-    "16": "sixteen",
-}
-# CHANGED (at explicit request -- "make it as fluent as possible"): each operator now carries BOTH a
-# singular and a plural verb form (English subject-verb agreement), selected in symbolic_to_english
-# below based on how many nouns got grouped into the preceding term -- "energy leads to code" vs.
-# "energy, memory, and mind lead to code".
-_OP_PHRASE = {  # SYMBOL_TABLE's relation/change/reasoning symbols -> (singular, plural) verb phrase
-    ":": ("is defined as", "are defined as"), "\u2192": ("leads to", "lead to"),
-    "\u2190": ("comes from", "come from"), "\u2194": ("relates to", "relate to"),
-    "\u22a5": ("conflicts with", "conflict with"), "\u2225": ("runs parallel to", "run parallel to"),
-    "\u2282": ("is part of", "are part of"), "\u2283": ("contains", "contain"),
-    "\u2229": ("overlaps with", "overlap with"), "\u222a": ("combines with", "combine with"),
-    "\u2191": ("is increasing in", "are increasing in"), "\u2193": ("is decreasing in", "are decreasing in"),
-    "\u2197": ("is improving in", "are improving in"), "\u2198": ("is degrading in", "are degrading in"),
-    "\u21bb": ("keeps repeating", "keep repeating"), "\u21ba": ("is reversing", "are reversing"),
-    "\u00d7": ("has stopped", "have stopped"), "\u2026": ("continues", "continue"),
-    "\u2234": ("therefore", "therefore"), "\u2235": ("because", "because"),
-    "\u00b1": ("or possibly the opposite of", "or possibly the opposite of"),
-}
-_CONN_PHRASE = {"&": "and", "\u2228": "or", "|": ";"}  # top-level clause connectors
-_MOD_PHRASE = {  # modifiers attach as a parenthetical right after the term they modify
-    "\u00b0": "low", "\u00b7": "moderate", "\u25cf": "high", "\u221e": "extreme", "~": "fluctuating",
-}
-_UNARY_PHRASE = {  # core-state / negation symbols, rendered as standalone descriptors
-    "\u2022": "affirmed", "\u2014": "negated", "\u2248": "uncertain", "?": "unknown",
-    "\u2205": "absent", "!": "significant", "\u00ac": "not",
-}
-
-def _join_noun_list(words):
-    """English list joining with an Oxford comma: ['a'] -> 'a', ['a','b'] -> 'a and b',
-    ['a','b','c'] -> 'a, b, and c'. This is what turns a run of adjacent NOUN tokens (structurally
-    valid under _LangGrammarState -- open class, no connector required between them) into a real noun
-    phrase instead of bare words jammed together with no punctuation."""
-    if len(words) == 1:
-        return words[0]
-    if len(words) == 2:
-        return f"{words[0]} and {words[1]}"
-    return ", ".join(words[:-1]) + f", and {words[-1]}"
-
-def symbolic_to_english(line):
-    """Decode one geometric_generate output line (symbol-algebra tokens) into a readable, grammatical
-    English sentence, for display only. Groups runs of adjacent noun tokens into a single Oxford-comma
-    noun phrase, picks singular/plural verb agreement for the operator connecting two terms, and
-    stitches clauses split by top-level connectors (&/∨/|) into one sentence rather than printing each
-    token as an isolated word. Unrecognized tokens fall back to their lowercased original form rather
-    than being dropped, so nothing silently disappears if the symbol alphabet ever grows."""
-    if not line:
-        return line
-    stripped = line.rstrip()
-    trailing = "."
-    if stripped and stripped[-1] in ".!?":
-        trailing = stripped[-1]
-        stripped = stripped[:-1]
-    # NEW (fix): "!" and "?" double as UNARY symbol tokens (SIGNIFICANT/UNKNOWN -- see _LANG_UNARY)
-    # AND as characters in the punctuation-stripping set below. Blindly stripping every token the same
-    # way turned a standalone "!" or "?" token into "" (dropped for being falsy), silently deleting two
-    # of the seven core-state symbols from the decoded output before Pass 1 ever saw them. Tokens that
-    # exactly match a known symbol are kept as-is; stripping only applies to stray punctuation attached
-    # to an otherwise-unrecognized word.
-    _known_syms = _LANG_OPS | _LANG_CONN | _LANG_MOD | _LANG_UNARY
-    raw_tokens = []
-    for w in stripped.split():
-        if w in _known_syms:
-            raw_tokens.append(w)
-        else:
-            w2 = w.strip(".,!?\u00bf\u00a1")
-            if w2:
-                raw_tokens.append(w2)
-    if not raw_tokens:
-        return line
-
-    # Pass 1: classify each token. MOD tokens fold into the immediately preceding term as a PRENOMINAL
-    # adjective ("fluctuating predictability", not "predictability (fluctuating)") -- real English puts
-    # the adjective before the noun. UNARY tokens (core-state/negation: uncertain/not/significant/etc.)
-    # are kept OUT of the term stream entirely and tagged QUAL instead: these describe the whole clause's
-    # epistemic status, not one more thing in the noun list -- folding them in as if they were nouns is
-    # what produced lines like "...why, uncertain, self, mind, and now" (reads like "uncertain" is a
-    # concept alongside "self" and "mind", which it isn't).
-    items = []  # list of ("TERM", text) | ("OP", (sing, plur)) | ("CONN", text) | ("QUAL", text)
-    for w in raw_tokens:
-        if w in _LANG_MOD:
-            adj = _MOD_PHRASE[w]
-            if items and items[-1][0] == "TERM":
-                items[-1] = ("TERM", f"{adj} {items[-1][1]}")
-            else:
-                items.append(("TERM", adj))
-        elif w in _LANG_OPS:
-            items.append(("OP", _OP_PHRASE[w]))
-        elif w in _LANG_CONN:
-            items.append(("CONN", _CONN_PHRASE[w]))
-        elif w in _LANG_UNARY:
-            items.append(("QUAL", _UNARY_PHRASE[w]))
-        else:
-            items.append(("TERM", _NOUN_GLOSS.get(w.upper(), w.lower())))
-
-    # Pass 2: collapse consecutive TERM entries into one grouped noun-WORD-LIST (kept as a list, not
-    # joined into a string yet -- Pass 4 below may still need to merge more words into this exact group
-    # after a neighboring fragment clause gets folded in, and you can't cleanly un-join an Oxford-comma
-    # string). QUAL entries pass through untouched -- they attach to the whole clause in Pass 3.
-    groups = []  # list of ("TERMS", [word,...], count) | ("OP", (sing, plur)) | ("CONN", text) | ("QUAL", text)
-    buf = []
-    for kind, val in items:
-        if kind == "TERM":
-            buf.append(val)
-            continue
-        if buf:
-            groups.append(("TERMS", buf, len(buf)))
-            buf = []
-        groups.append((kind, val, None))
-    if buf:
-        groups.append(("TERMS", buf, len(buf)))
-
-    # Pass 3: split groups into per-clause records at each CONN boundary. A clause record keeps its
-    # segments (TERMS/OP, in order, so verb agreement can still be resolved later) and its own QUAL list,
-    # rather than pre-rendering to a string -- Pass 4 needs to still be able to reach into a clause's noun
-    # groups and add more words to them.
-    clauses, joiners = [], []  # joiners[i] is the connector between clauses[i] and clauses[i+1]
-    cur_segs, cur_quals = [], []
-    for entry in groups:
-        kind = entry[0]
-        if kind == "CONN":
-            clauses.append({"segs": cur_segs, "quals": cur_quals})
-            joiners.append(entry[1])
-            cur_segs, cur_quals = [], []
-            continue
-        if kind == "QUAL":
-            cur_quals.append(entry[1])
-            continue
-        if kind == "OP":
-            cur_segs.append(("OP", entry[1]))
-        else:  # TERMS
-            _, wordlist, count = entry
-            cur_segs.append(("TERMS", wordlist, count))
-    clauses.append({"segs": cur_segs, "quals": cur_quals})
-    # Drop any wholly-empty clause a stray double-CONN might have produced (grammar-FSM already forbids
-    # this in practice, but cheap to guard) and keep joiners aligned with what's left.
-    i = 0
-    while i < len(clauses):
-        if not clauses[i]["segs"] and not clauses[i]["quals"]:
-            del clauses[i]
-            if i < len(joiners):
-                del joiners[i]
-            elif joiners:
-                del joiners[-1]
-        else:
-            i += 1
-
-    # Pass 4 (fix, at explicit request -- clause-joining ambiguity): a clause with NO operator at all is
-    # a bare noun phrase, not a sentence -- e.g. from "SELF & VECTOR <-> GEN", clause 1 is just "self".
-    # The old code joined it to the next clause with "and" at the TOP level ("Self and vector relates to
-    # generation"), which visually reads as a two-noun compound subject ("self and vector") but the verb
-    # right after it was picked singular, because internally it only ever agreed with "vector" -- the
-    # subject and the verb disagreed about how many nouns were actually being talked about. Fix: fold a
-    # no-operator clause's nouns directly INTO the noun group they're actually standing next to (the
-    # following clause's subject if there is one, else the previous clause's final noun group) so the
-    # word count used for verb agreement includes them for real, instead of merely sitting beside them.
-    def _has_op(c):
-        return any(seg[0] == "OP" for seg in c["segs"])
-
-    i = 0
-    while i < len(clauses) and len(clauses) > 1:
-        if _has_op(clauses[i]):
-            i += 1
-            continue
-        frag_words = [w for seg in clauses[i]["segs"] if seg[0] == "TERMS" for w in seg[1]]
-        frag_quals = clauses[i]["quals"]
-        if i + 1 < len(clauses):
-            nxt = clauses[i + 1]
-            for si, seg in enumerate(nxt["segs"]):
-                if seg[0] == "TERMS":
-                    merged = frag_words + seg[1]
-                    nxt["segs"][si] = ("TERMS", merged, len(merged))
-                    break
-            else:
-                nxt["segs"].insert(0, ("TERMS", frag_words, len(frag_words)))
-            nxt["quals"] = frag_quals + nxt["quals"]
-            del clauses[i]
-            del joiners[i]
-            continue  # re-check at same i -- now the (possibly still-fragmentary) next clause
-        else:
-            prev = clauses[i - 1]
-            for si in range(len(prev["segs"]) - 1, -1, -1):
-                if prev["segs"][si][0] == "TERMS":
-                    merged = prev["segs"][si][1] + frag_words
-                    prev["segs"][si] = ("TERMS", merged, len(merged))
-                    break
-            else:
-                prev["segs"].append(("TERMS", frag_words, len(frag_words)))
-            prev["quals"] = prev["quals"] + frag_quals
-            del clauses[i]
-            del joiners[i - 1]
-            i -= 1
-
-    # Pass 5: render each surviving clause -- TERMS groups join with an Oxford comma, an OP renders as a
-    # verb phrase agreeing with whichever TERMS group sat immediately before it, and any QUAL words land
-    # as a trailing parenthetical -- then stitch clauses together with each one's own captured connector.
-    def _render_clause(c):
-        pieces, last_count = [], 1
-        for seg in c["segs"]:
-            if seg[0] == "TERMS":
-                _, wordlist, count = seg
-                pieces.append(_join_noun_list(wordlist))
-                last_count = count
-            else:  # OP
-                sing, plur = seg[1]
-                pieces.append(plur if last_count > 1 else sing)
-        text = " ".join(pieces)
-        if c["quals"]:
-            text = f"{text} ({_join_noun_list(c['quals'])})"
-        return text
-
-    clause_texts = [_render_clause(c) for c in clauses if c["segs"] or c["quals"]]
-    if not clause_texts:
-        return line
-    parts = [clause_texts[0]]
-    for i in range(1, len(clause_texts)):
-        parts.append(joiners[i - 1] if i - 1 < len(joiners) and joiners[i - 1] else "and")
-        parts.append(clause_texts[i])
-    sentence = " ".join(parts)
-
-    sentence = sentence[0].upper() + sentence[1:]
-    return sentence + trailing
-
-# ============================================ SYM (Semantic Symbol Language) OUTPUT
-# At explicit request ("Replace all English output with this symbol lang, keep input English"): the
-# model's SPOKEN output (what symbolic_to_english above used to render as prose) is now rendered in SYM
-# instead. Human input still goes through the exact same English-language understanding pipeline
-# unchanged (embed_text/semantic_route_multi/detect_expected_answer_type/etc. above never touch this --
-# they parse what the HUMAN said, which stays English per the request). symbolic_to_english itself is
-# left in place, unused by generation now, purely as a working reference for how the same token stream
-# maps to prose vs. to SYM -- deleting a few hundred lines of already-correct, already-tested code to
-# satisfy "replace" literally would trade real value (the mapping stays inspectable/diffable) for no
-# actual benefit (it costs nothing dormant).
-#
-# The translation turns out to be much thinner than the English one: the model's own internal generation
-# alphabet (SYMBOL_TABLE/_LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY, defined near the top of
-# the SYMBOLIC OUTPUT ALPHABET section above) already overlaps almost exactly with SYM's own vocabulary --
-# EVERY _LANG_UNARY token (• — ≈ ? ∅ ! ¬) is a SYM core/logic symbol with the IDENTICAL meaning, and most
-# _LANG_OPS tokens (→ ← ↔ ⊥ ⊂ ⊃ ∩ ∥ ↑ ↓ ↻ ↺ × … ∴ ∵) are likewise already exact SYM relationship/state/
-# logic symbols. So below is much less a translation than symbolic_to_english was, and much more a direct
-# pass-through of the ORIGINAL token stream (unlike English, which had to reorder/regroup heavily for
-# grammar) with exactly three real substitutions:
-#   NOUN    -- gets a SYM shape category + its own tag as the identifier, e.g. SELF -> "\u25cbSELF"
-#              (SYM section 2's own examples label concepts this way: "\u25cb1", "\u25c7A", "\u25a1SYS" --
-#              using the noun's own tag as the label keeps it traceable instead of inventing arbitrary IDs)
-#   MOD     -- SYM's own scale only has 3 tiers (\u00b7/\u2022\u2022/\u25cf), not the internal alphabet's
-#              5, and no "fluctuating" tier at all -- folded onto it (see _SYM_MOD) and moved to a PREFIX,
-#              since SYM's own grammar section is explicit that modifiers precede what they modify (the
-#              internal grammar attaches MOD tokens AFTER their noun instead -- reordered here, same as
-#              symbolic_to_english's prenominal-adjective fix did)
-#   OP "\u222a" -- the one relation with no real SYM equivalent, folded onto "+" (closest available
-#              meaning: SYM's ADD/INCREASE, for a relation originally glossed "combines with")
-# Everything else (every UNARY token, every other OP, both CONNs) is emitted VERBATIM in its ORIGINAL
-# stream position -- it already IS the correct SYM character in the correct SYM role, so there is
-# nothing to translate. A run of adjacent NOUNs with nothing between them (structurally valid under
-# _LangGrammarState's open class) joins with SYM's own "&" (AND) instead of an English Oxford comma --
-# SYM section 5 is the tool this notation actually gives for combining multiple things, and using it
-# is truer to the notation than borrowing natural-language list punctuation would be.
-_SYM_NOUN_SHAPE = {  # NEW: which SYM shape (see SYM section 2) each internal noun tag renders as.
-    # \u25cb ENTITY/OBJECT -- personified/agent-like nouns
-    "SELF": "\u25cb", "GUBI": "\u25cb", "PROTOGEN": "\u25cb", "HUMAN": "\u25cb",
-    "MIND": "\u25cb", "VOICE": "\u25cb",
-    # \u25a1 SYSTEM/STRUCTURE -- structural/architectural nouns
-    "ARCH": "\u25a1", "NODE": "\u25a1", "MATRIX": "\u25a1", "LAYER": "\u25a1",
-    "CODE": "\u25a1", "EXPERIMENT": "\u25a1", "STATE": "\u25a1",
-    # \u25c7 IDEA/CONCEPT -- everything else: self-model axes and other abstract concepts (default
-    # fallback below covers this bucket too, so nothing needs to be listed here explicitly, but a few
-    # are named for clarity: COH/INT/NRG/AGN/GRD/PRD/MEM/SPR/PUL/VECTOR/NOW/PROOF/EXPERIENCE/DOUBT/WHY/
-    # GEN/LANG/TIME/WORD/CHOICE/PROB/"16")
-}
-_SYM_MOD = {  # NEW: internal 5-level modifier scale -> SYM's 3-tier scale (+ \u2248 for "fluctuating",
-              # since SYM has no instability tier of its own but DOES already use \u2248 for uncertainty,
-              # which is the closer fit than forcing "fluctuating" onto a fixed intensity level)
-    "\u00b0": "\u00b7", "\u00b7": "\u2022\u2022", "\u25cf": "\u25cf",
-    "\u221e": "\u25cf\u25cf",  # extreme -- stacked, same convention SYM section 10 itself demonstrates
-    "~": "\u2248",             # fluctuating -- see comment above
-}
-_SYM_OP = {"\u222a": "+"}  # the one OP substitution that isn't just identity -- see module comment above
-
-def symbolic_to_sym(line):
-    """Render one generated symbolic line as SYM notation (see module comment above) instead of English
-    prose. Structurally mirrors symbolic_to_english's own tokenization preamble exactly (including the
-    fix for '!'/'?' doubling as both UNARY tokens and punctuation-stripping characters), since the input
-    is the identical generated token stream either function could be asked to decode."""
-    if not line:
-        return line
-    stripped = line.rstrip()
-    trailing = "."
-    if stripped and stripped[-1] in ".!?":
-        trailing = stripped[-1]
-        stripped = stripped[:-1]
-    known_syms = _LANG_OPS | _LANG_CONN | _LANG_MOD | _LANG_UNARY | _LANG_NOUNS
-    raw_tokens = []
-    for w in stripped.split():
-        if w in known_syms:
-            raw_tokens.append(w)
-        else:
-            w2 = w.strip(".,!?\u00bf\u00a1")
-            if w2:
-                raw_tokens.append(w2)
-    if not raw_tokens:
-        return line
-
-    out = []
-    prev_noun_idx = None  # index in `out` of the most-recently-emitted noun, so a MOD (which follows
-                           # its noun in the ORIGINAL stream) can still prefix it in the OUTPUT, per SYM's
-                           # "modifiers go immediately before" grammar rule
-    for w in raw_tokens:
-        if w in _LANG_MOD:
-            if prev_noun_idx is not None:
-                out[prev_noun_idx] = _SYM_MOD.get(w, w) + out[prev_noun_idx]
-            continue
-        if w in _LANG_OPS:
-            prev_noun_idx = None
-            out.append(_SYM_OP.get(w, w))  # identity for every OP except "\u222a" -- see module comment
-            continue
-        if w in _LANG_CONN or w in _LANG_UNARY:
-            prev_noun_idx = None
-            out.append(w)  # always verbatim, already the correct SYM character (see module comment)
-            continue
-        # NEW (fix, at explicit request -- "symbols only for everything, no nouns in any form"): anything
-        # that isn't an OP/CONN/MOD/UNARY symbol is a NOUN -- same "else = noun" convention
-        # symbolic_to_english itself already relies on (its own Pass 1 does
-        # `_NOUN_GLOSS.get(w.upper(), w.lower())` in exactly this position; real generated tokens come out
-        # lowercase, hence the .upper() below). Previously rendered as shape+id ("\u25a13" for NODE) --
-        # even a bare number still names a SPECIFIC referent, which is still an identifier standing in
-        # for a noun, just spelled with digits instead of letters. Now it's the bare shape glyph ALONE:
-        # every entity is "\u25cb", every system is "\u25a1", every other concept is "\u25c7", with
-        # nothing distinguishing one from another -- pure category, no reference at all.
-        tag = w.upper()
-        if prev_noun_idx is not None and prev_noun_idx == len(out) - 1:
-            out.append("&")  # adjacent nouns, nothing between them -- SYM's own AND (see module comment)
-        out.append(_SYM_NOUN_SHAPE.get(tag, "\u25c7"))
-        prev_noun_idx = len(out) - 1
-    return " ".join(out) + trailing
 
 def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
                         entity_vec=None, entity_word=None, entity_weight=None, mind=None):
@@ -5564,15 +5110,6 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
                                       # feeds into in _select_best)
     lang_grammar = _LangGrammarState()  # NEW: grammar-constrained decoding state for Lang -- see class
                                          # docstring above
-    saw_op = False  # NEW (fix, at explicit request -- "make it speak English" pt.2): tracks whether a
-                     # real relational operator (the thing symbolic_to_english renders as the VERB --
-                     # "leads to"/"relates to"/etc.) has been emitted yet in this line. Without this, a
-                     # structurally-legal-per-FSM line could be nothing but a run of NOUN/MOD tokens
-                     # (</s> is allowed any time can_close_sentence() is true, which only checks the LAST
-                     # token, not whether an OP ever appeared at all) -- which decodes to a bare noun list
-                     # with no verb, e.g. "Predictability (fluctuating), language (moderate), vector...".
-                     # Gating </s> on this the same way GEN_WORD_RANGE[0]/can_close_sentence already do
-                     # forces every generated line to contain a subject-verb-object shape once decoded.
     for _ in range(n_words):
         context_vec = normalize(context_sum / context_n)  # NEW: the "one big thing" -- whole history so far
         # WAS: candidates = bigram.get(prev) or unigram -- a lookup keyed on exactly the ONE previous
@@ -5631,10 +5168,6 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
         # on other FSM-guarded paths.
         if "</s>" in cand_words and not lang_grammar.can_close_sentence():
             combined[cand_words.index("</s>")] = 0.0
-        # NEW (fix, at explicit request -- "make it speak English" pt.2): never end the line before it
-        # contains at least one operator -- see saw_op docstring above.
-        if "</s>" in cand_words and not saw_op:
-            combined[cand_words.index("</s>")] = 0.0
         total = combined.sum()
         # FIX (NaN-weight collapse -- root cause of the "Probabilities contain NaN" crash): same issue as
         # the fallback in _dual_transformer_word_step above -- `total > EPS` is False whenever total is
@@ -5664,8 +5197,6 @@ def geometric_generate(query_vec, bigram, unigram, rng, n_words=None,
         _logprob_n += 1
         out.append(nxt)
         lang_grammar.advance(nxt)  # NEW: update the Lang FSM with the token actually chosen
-        if lang_grammar.last == lang_grammar.OP:  # NEW: see saw_op docstring above
-            saw_op = True
         _bigrams_used.add((prev, nxt))
         prev = nxt
         if mind is not None:  # NEW (per-token grounding): write-back fires HERE, every token, not just
@@ -5800,14 +5331,6 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
     discovered topic's word list if THAT'S what won, else None (routed via
     the hand-authored bank as before)."""
     v = embed_text(prompt, _IDF, _DEFAULT_IDF)
-    # NEW (fix, at explicit request -- "parse what was asked more richly"): the Li & Roth wh-type
-    # classifier (detect_expected_answer_type/ANSWER_TYPE_WORDS) already existed but only ever reranked
-    # already-generated candidates, never influenced which CONCEPT got routed to in the first place --
-    # so "why do you exist" and "what are you" could both land on whichever concept happened to be
-    # nearest in raw embedding distance, with no credit for one of them actually being a why-question.
-    # Computed once here and folded in as a small per-concept bonus below (see _CONCEPT_ANSWER_TYPE_HINT
-    # / ROUTE_TYPE_BONUS_WEIGHT) -- a tiebreak nudge, not a hard override.
-    expected_type = detect_expected_answer_type(prompt)
     # NEW (agency loop): while a goal is active, weight candidates toward whichever concept/mood has
     # historically co-occurred with THAT axis being strong (axis_profile[name][goal_axis] -- the same
     # learned per-name axis profile want_align_score already reads, just indexed by the currently-
@@ -5820,10 +5343,6 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
             return 0.5
         profile = axis_profile.get(name)
         return float(profile.get(goal_axis, 0.5)) if profile is not None else 0.5
-    def _type_bonus(kind_label, name):
-        if expected_type is None or kind_label != "concept":
-            return 0.0
-        return ROUTE_TYPE_BONUS_WEIGHT if _CONCEPT_ANSWER_TYPE_HINT.get(name) == expected_type else 0.0
     text_w = 1 - WANT_ALIGN_WEIGHT - GOAL_ALIGN_WEIGHT
     best_kind, best_name, best_score, best_text, best_topic = None, None, 0.0, 0.0, None
     for kind_label, bank in (("concept", CONCEPT_ANCHORS), ("mood", MOOD_ANCHORS)):
@@ -5832,79 +5351,19 @@ def semantic_route(prompt, mind, anchor_drift, axis_profile, topic_anchors=None)
             text_score = float(np.exp(-GROUND_LAM * np.sum((v - anchor_vec) ** 2)))
             want_score = want_align_score(name, axis_profile, mind.want_ema)
             combined = (text_w * text_score + WANT_ALIGN_WEIGHT * want_score
-                        + GOAL_ALIGN_WEIGHT * _goal_align(name) + _type_bonus(kind_label, name))
+                        + GOAL_ALIGN_WEIGHT * _goal_align(name))
             if combined > best_score:
                 best_kind, best_name, best_score, best_text, best_topic = kind_label, name, combined, text_score, None
     for kind_label, name, anchor_vec, topic_words in (topic_anchors or []):
         text_score = float(np.exp(-GROUND_LAM * np.sum((v - anchor_vec) ** 2)))
         want_score = want_align_score(name, axis_profile, mind.want_ema)
         combined = (text_w * text_score + WANT_ALIGN_WEIGHT * want_score
-                    + GOAL_ALIGN_WEIGHT * _goal_align(name) + _type_bonus(kind_label, name))
+                    + GOAL_ALIGN_WEIGHT * _goal_align(name))
         if combined > best_score:
             best_kind, best_name, best_score, best_text, best_topic = kind_label, name, combined, text_score, topic_words
     if best_score < CONCEPT_GROUNDING_THRESHOLD:
         return None, None, best_score, best_text, None
     return best_kind, best_name, best_score, best_text, best_topic
-
-# NEW (fix, at explicit request -- "make it have real parsing"): semantic_route above still embeds and
-# routes the WHOLE prompt as one bag of words -- see split_clauses's docstring for why that silently
-# drops one half of a compound ask. This wraps it: split the prompt into real clauses first, route each
-# clause independently through the exact same semantic_route (so single-clause prompts -- the common
-# case -- get IDENTICAL behavior, byte for byte, to calling semantic_route directly), then only if two OR
-# MORE clauses genuinely routed to two OR MORE DIFFERENT concepts does anything different happen: their
-# anchor vectors get blended into one combined topic vector, so the generation that follows stays on-
-# topic for BOTH things actually asked about, not just whichever clause the old single-pass average
-# happened to lean toward.
-MULTI_CLAUSE_BLEND_WEIGHT = 0.5  # equal weight per distinct concept clause -- no principled reason for
-                                  # this system to consider one half of a compound question more
-                                  # important than the other just because it was asked first
-
-def semantic_route_multi(prompt, mind, anchor_drift, axis_profile, topic_anchors=None):
-    """Real per-clause parsing + routing. Returns (kind, name, score, text_score, matched_topic,
-    blend_info) -- the first five have EXACTLY semantic_route's own shape (existing callers work
-    unchanged if they ignore the 6th value); blend_info is None for an ordinary single-topic route, or
-    (blended_topic_vec, [name, ...]) when 2+ distinct concepts were each independently confident about a
-    DIFFERENT clause of the same prompt. `name`/`kind` still identify the single highest-scoring concept
-    among those blended (so existing single-concept ANSWER dispatch -- CONCEPT_BANK[name]['answer'] --
-    still has something concrete to call) -- blend_info's vector is what should additionally steer
-    prompt_topic_vec for generation, so word choice afterward leans toward every topic that was actually
-    asked about, not only the one dispatch ended up answering from."""
-    clauses = split_clauses(prompt)
-    if len(clauses) <= 1:
-        kind, name, score, text_score, matched_topic = semantic_route(
-            prompt, mind, anchor_drift, axis_profile, topic_anchors)
-        return kind, name, score, text_score, matched_topic, None
-    routed = [(c,) + semantic_route(c, mind, anchor_drift, axis_profile, topic_anchors) for c in clauses]
-    confident = [r for r in routed if r[1] is not None]  # r = (clause_text, kind, name, score, text, topic)
-    if not confident:
-        c0, kind, name, score, text_score, matched_topic = routed[0]
-        return kind, name, score, text_score, matched_topic, None
-    distinct = {}  # (kind, name) -> best (clause_text, score) seen for it, across clauses
-    for c, kind, name, score, text_score, matched_topic in confident:
-        key = (kind, name)
-        if key not in distinct or score > distinct[key][1]:
-            distinct[key] = (c, score)
-    if len(distinct) <= 1:
-        best = max(confident, key=lambda r: r[3])
-        return best[1], best[2], best[3], best[4], best[5], None
-    # 2+ genuinely different concepts, each independently confident about its own clause -- blend
-    concept_keys = [k for k in distinct if k[0] == "concept"]
-    blend_keys = concept_keys if len(concept_keys) >= 2 else list(distinct.keys())
-    # NEW (fix): blend the CLAUSE's own embedding, not a CONCEPT_ANCHORS/MOOD_ANCHORS re-lookup by name --
-    # a name routed via a discovered topic or an autonomously-created concept lives in neither dict (its
-    # vector only ever existed inside the topic_anchors tuple passed in), so re-deriving by name would
-    # KeyError for exactly the routes this system is proudest of (see AUTONOMOUS CONCEPT CREATION below).
-    # The clause's own embedding is also simply the more honest thing to blend: it's what THIS prompt
-    # actually said about that topic, not the topic's generic hand-authored anchor.
-    vecs = [embed_text(distinct[k][0], _IDF, _DEFAULT_IDF) for k in blend_keys]
-    blended_vec = vecs[0]
-    for v in vecs[1:]:
-        blended_vec = _blend(blended_vec, 1 - MULTI_CLAUSE_BLEND_WEIGHT, v, MULTI_CLAUSE_BLEND_WEIGHT)
-    winner_key = max(blend_keys, key=lambda k: distinct[k][1])
-    winner_kind, winner_name = winner_key
-    best_score = max(distinct[k][1] for k in blend_keys)
-    names = [k[1] for k in blend_keys]
-    return winner_kind, winner_name, best_score, best_score, None, (blended_vec, names)
 
 # ============================================ CORPUS GROWTH (real, over time)
 # Everything above is bootstrapped from a fixed 20-document, hand-authored
@@ -5959,15 +5418,6 @@ def load_raw_corpus(conn):
     return load_blob(conn, RAW_CORPUS_KEY) or []
 
 def update_raw_corpus(conn, prompt):
-    # NEW (bugfix, defense-in-depth alongside the __main__ argv guard): reject prompt text that looks
-    # like CLI/kernel noise rather than something a human actually typed -- a bare flag ("-f") or a
-    # filesystem path (e.g. a Jupyter kernel connection file) should never be persisted into the corpus
-    # or trained into the bigram/transformer tables, since once in there it resurfaces in generation
-    # forever after. This is a second, independent layer -- it also protects any future call path into
-    # run()/update_raw_corpus that doesn't go through the __main__ argv parsing at all (e.g. calling
-    # run() directly from a notebook cell).
-    if prompt is None or prompt.strip().startswith("-") or "/" in prompt or "\\" in prompt:
-        return load_raw_corpus(conn)
     corpus = load_raw_corpus(conn)
     toks = _tokenize_natural(prompt)
     if toks:
@@ -6506,6 +5956,17 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         print(f"--- no prior state found, bootstrapping fresh (entropy={mind.init_entropy}) ---\n")
         steps_to_run = bootstrap_steps
 
+    # NEW: grounding_frame/semantic_grounding_frame (see GROUNDING FRAME section) are ordinary instance
+    # attributes, not part of Mind.get_state()'s own serialization -- restore them here from their own
+    # blobs, same DB, same pattern as everything else, or the self-model they exist to provide would
+    # silently reset to "no history yet" on every single invocation instead of persisting across a life.
+    saved_gframe = load_blob(conn, "grounding_frame")
+    if saved_gframe is not None:
+        mind.grounding_frame = np.array(saved_gframe, dtype=float)
+    saved_sframe = load_blob(conn, "semantic_grounding_frame")
+    if saved_sframe is not None:
+        mind.semantic_grounding_frame = np.array(saved_sframe, dtype=float)
+
     # NEW: bidirectional-grounding state (see BIDIRECTIONAL GROUNDING section)
     # -- anchor_drift and axis_profile are this Mind's own learned-from-usage
     # additions to the fixed hand-authored banks, persisted the same way
@@ -6544,6 +6005,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
     prompt_topic_vec = None  # NEW: only set when there's a real prompt to stay on-topic for
     if prompt:
         prompt_topic_vec = embed_text(prompt, _IDF, _DEFAULT_IDF)
+        prompt_topic_vec = ground_input_embedding(mind, prompt_topic_vec)  # NEW: ground the input, not just the output
         mind.seed_discourse_entity(prompt)  # NEW: hard-reset the shared anchor so the reply orbits what was ASKED,
                                              # not wherever the entity last drifted to from prior free-running output
         corpus = update_corpus(conn, prompt)  # every real prompt grows the corpus, matched or not
@@ -6558,13 +6020,8 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         # NEW: self-authored concepts are real routing candidates too -- same tuple shape topic_anchors
         # already uses, so semantic_route needs no changes at all to search over them as well
         topic_anchors = topic_anchors + [("concept", nm, vec, None) for nm, vec in _AUTO_CONCEPT_ANCHORS.items()]
-        kind, name, ground_score, text_score, matched_topic, blend_info = semantic_route_multi(
+        kind, name, ground_score, text_score, matched_topic = semantic_route(
             prompt, mind, anchor_drift, axis_profile, topic_anchors=topic_anchors)
-        if blend_info is not None:  # NEW: 2+ distinct concepts each independently confident about their
-            blended_vec, blended_names = blend_info  # own clause of a compound prompt -- see
-            prompt_topic_vec = _blend(prompt_topic_vec, 0.5, blended_vec, 0.5)  # semantic_route_multi's
-            print(f"(compound prompt -- multiple topics detected: {', '.join(blended_names)}; "  # docstring
-                  f"staying on-topic for all of them, answering primarily from '{name}')")
         wants = (kind == "concept" and name == "will")
         concept_name = name if (kind == "concept" and not wants) else None
         routed_name = name if kind == "mood" else None
@@ -6634,13 +6091,8 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
             # _AUTO_CONCEPT_ANCHORS/anchor_drift reflect what just happened) and re-route once more
             topic_anchors = discovered_topic_anchors(corpus) + [
                 ("concept", nm, vec, None) for nm, vec in _AUTO_CONCEPT_ANCHORS.items()]
-            kind, name, ground_score, text_score, matched_topic, blend_info = semantic_route_multi(
+            kind, name, ground_score, text_score, matched_topic = semantic_route(
                 prompt, mind, anchor_drift, axis_profile, topic_anchors=topic_anchors)
-            if blend_info is not None:
-                blended_vec, blended_names = blend_info
-                prompt_topic_vec = _blend(prompt_topic_vec, 0.5, blended_vec, 0.5)
-                print(f"(compound prompt -- multiple topics detected: {', '.join(blended_names)}; "
-                      f"staying on-topic for all of them, answering primarily from '{name}')")
             wants = (kind == "concept" and name == "will")
             concept_name = name if (kind == "concept" and not wants) else None
             routed_name = name if kind == "mood" else None
@@ -6655,6 +6107,7 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         # existed in this file; this is the first thing that ever calls it with real content.
         state, _ = mind.step(bias_M=_LAST_TF_MIND_BIAS)
         norm = mind.adaptive_normalize(normalize_state(state))
+        norm, norm_g = ground_state(mind, norm)  # NEW: every reading below is now grounding-frame-relative
         learned = mind.learn_desire(norm, state["NegReward"], ext_sense=state["ExtSense"], m_mean=state["M_mean"])
         mind.agency_step(norm)  # NEW: agency loop -- see AGENCY LOOP module comment
         in_window = prompt is not None and t < prompt_inject_steps and kind is not None
@@ -6663,37 +6116,38 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
         # immediately after so ambient/repeat generation for every other t falls back to TOPIC_BEST_OF/
         # FREE_BEST_OF as before.
         _BRANCH_OVERRIDE_BEST_OF = answer_branches if (t == 0 and in_window and answer_branches) else None
-        # NEW: CURSOR CHANNEL -- advance once per tick regardless of which branch below actually runs,
-        # using whichever concept (or "will") routing picked this tick as the target region, falling back
-        # to "self" for every mood/ambient tick (moods aren't a "subject" being discussed, so there's
-        # nothing else to move toward). See update_cursor()'s docstring for the actual dynamics.
-        cursor_target = name if kind == "concept" else "self"
-        cursor_x, cursor_y = update_cursor(mind, cursor_target, confidence=ground_score,
-                                            coherence=state["C"], agency=norm.get("agency", 0.5),
-                                            rng=mind.rng)
         if in_window and not experience_recorded:
             spoken_name = "will" if wants else name
             record_experience(spoken_name, prompt, norm, anchor_drift, axis_profile)
             experience_recorded = True
+        vis = state_to_visual_params(norm, norm_g)  # NEW: the non-verbal channel -- computed every step,
+                                                      # regardless of branch, since it's meant to be a
+                                                      # continuous ambient signal, not just a per-prompt reply
         if in_window and wants:
             axis, desire_val, line, judged, recalled = speak_desire(mind, state, norm, learned, choose_rng,
                                                                      topic_vec=prompt_topic_vec, prompt_text=prompt)
+            # line/judged/recalled still computed -- Mind's own learning/memory bookkeeping (reward,
+            # persistence, recall) doesn't change just because the DISPLAY channel is no longer language
+            log_visual_frame(t, vis, tag=f"will:{axis}", response=True)  # this branch only runs when in_window
             if t % 10 == 0 or in_window:
                 mem_tag = f" [recalled:{recalled['word']}]" if recalled is not None else ""
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [wants:{axis} desire={desire_val:.2f} "
                       f"gate={judged['recall_gate']:.2f} pers={judged['persistence']:.2f}]{mem_tag}  "
-                      f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  "
-                      f"{symbolic_to_sym(line)} <-- response to prompt")
+                      f"\u25cf round={vis['roundness']:.2f} open={vis['openness']:.2f} speed={vis['speed']:.2f} "
+                      f"reg={vis['regularity']:.2f} sym={vis['symmetry']:.2f} hue={vis['hue']:.2f} "
+                      f"<-- response to prompt (non-verbal)")
             continue
         if in_window and concept_name is not None:
             line = get_concept_answer_fn(concept_name)(mind, state, norm, choose_rng,
                                                          topic_vec=prompt_topic_vec, prompt_text=prompt)
+            log_visual_frame(t, vis, tag=f"concept:{concept_name}", response=True)  # this branch only runs when in_window
             if t % 10 == 0 or in_window:
                 print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                       f"R={state['NegReward']:+.2f}  [concept:{concept_name} g={ground_score:.2f}]  "
-                      f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  "
-                      f"{symbolic_to_sym(line)} <-- semantic response")
+                      f"\u25cf round={vis['roundness']:.2f} open={vis['openness']:.2f} speed={vis['speed']:.2f} "
+                      f"reg={vis['regularity']:.2f} sym={vis['symmetry']:.2f} hue={vis['hue']:.2f} "
+                      f"<-- semantic response (non-verbal)")
             continue
         # NEW: cluster_name is now only a LABEL (from pick_cluster's distance
         # scoring, for the bracketed tag below and the basin-alarm override) --
@@ -6715,13 +6169,20 @@ def run(prompt=None, bootstrap_steps=600, topup_steps=150, gen_steps=200,
                 mind, query, choose_rng,
                 topic_vec=prompt_topic_vec if in_window else None,
                 prompt_text=prompt if in_window else None, state_vec=qvec)
-            tag = " <-- response to prompt" if in_window else ""
+            log_visual_frame(t, vis, tag=f"mood:{cluster_name}", response=in_window)  # ambient steps also land here
+            tag = " (non-verbal)" if in_window else ""
             mem_tag = f" [recalled:{recalled['word']}]" if recalled is not None else ""
             print(f"t={t:3d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                   f"R={state['NegReward']:+.2f}  [{cluster_name} pers={judged['persistence']:.2f}]"
-                  f"{mem_tag}  cursor=({cursor_x:+.2f},{cursor_y:+.2f})  {symbolic_to_sym(line)}{tag}")
+                  f"{mem_tag}  \u25cf round={vis['roundness']:.2f} open={vis['openness']:.2f} "
+                  f"speed={vis['speed']:.2f} reg={vis['regularity']:.2f} sym={vis['symmetry']:.2f} "
+                  f"hue={vis['hue']:.2f}{tag}")
 
     save_blob(conn, "mind_state", mind.get_state())
+    if hasattr(mind, "grounding_frame"):
+        save_blob(conn, "grounding_frame", mind.grounding_frame.tolist())
+    if hasattr(mind, "semantic_grounding_frame"):
+        save_blob(conn, "semantic_grounding_frame", mind.semantic_grounding_frame.tolist())
     save_blob(conn, LINE_USE_COUNT_KEY, dict(_LINE_USE_COUNT))  # persist overuse-history across invocations
     save_learned_grounding(conn, anchor_drift, axis_profile)
     save_auto_concepts(conn, auto_concepts)  # NEW: self-authored concepts persist the same way everything else does
@@ -6745,15 +6206,6 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
     via update_raw_corpus so future training sees it too. Ctrl-C or Ctrl-D exits cleanly (final save
     already happened on the last tick, so there's nothing left to flush on the way out)."""
     import curses
-
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        # No controlling terminal (papermill/notebook kernel/piped run/CI, etc.) -- curses needs a real
-        # TTY (it calls cbreak()/nocbreak() under the hood, which raise curses.error with no terminal
-        # attached). Fall back to the one-shot batch path instead of crashing.
-        print("[kiba_cli: no controlling terminal detected (notebook/papermill/piped run) "
-              "-- curses UI unavailable, falling back to one-shot run()]")
-        run(prompt=None)
-        return
 
     def _main(stdscr):
         global _BIGRAM, _UNIGRAM, _LAST_TF_MIND_BIAS, _LAST_GEN_FLUENCY
@@ -6784,6 +6236,12 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
                 log(f"{e} discarding it, fresh mind (entropy={mind.init_entropy:.3f})")
         else:
             log(f"fresh mind (entropy={mind.init_entropy:.3f})")
+        saved_gframe = load_blob(conn, "grounding_frame")  # NEW: same restoration as run() -- see there
+        if saved_gframe is not None:
+            mind.grounding_frame = np.array(saved_gframe, dtype=float)
+        saved_sframe = load_blob(conn, "semantic_grounding_frame")
+        if saved_sframe is not None:
+            mind.semantic_grounding_frame = np.array(saved_sframe, dtype=float)
         anchor_drift, axis_profile = load_learned_grounding(conn)
         auto_concepts = load_auto_concepts(conn)
         _load_auto_concepts_into_runtime(auto_concepts)
@@ -6818,6 +6276,7 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
             while True:
                 state, _ = mind.step(bias_M=_LAST_TF_MIND_BIAS)
                 norm = mind.adaptive_normalize(normalize_state(state))
+                norm, norm_g = ground_state(mind, norm)  # NEW: same grounding-frame wiring as run()
                 mind.learn_desire(norm, state["NegReward"], ext_sense=state["ExtSense"],
                                    m_mean=state["M_mean"])
                 mind.agency_step(norm)  # NEW: agency loop -- see AGENCY LOOP module comment
@@ -6827,24 +6286,26 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
 
                 qvec, _ = qualia_vector(mind, state, norm)
                 cluster_name = pick_cluster(norm)
-                # NEW: CURSOR CHANNEL -- kiba_cli's interactive loop has no concept-routing of its own
-                # (see run()'s semantic_route_multi call, which this loop never makes), so there's no
-                # "subject" region to move toward here -- always targets "self", still driven by real
-                # per-tick coherence/agency rather than sitting frozen while run()'s cursor advances.
-                cursor_x, cursor_y = update_cursor(mind, "self", confidence=1.0, coherence=state["C"],
-                                                    agency=norm.get("agency", 0.5), rng=mind.rng)
                 line, judged, recalled = _generate_and_track(
                     mind, qvec, choose_rng,
                     topic_vec=prompt_topic_vec if in_window else None,
                     prompt_text=pending_prompt if in_window else None,
                     state_vec=qvec)
-                tag = " <-- response to prompt" if in_window else ""
+                # line/judged/recalled: still computed for Mind's own learning/memory bookkeeping (see
+                # run()'s identical comment) -- vis below is what's actually shown now
+                vis = state_to_visual_params(norm, norm_g)
+                log_visual_frame(mind.total_steps, vis, tag=f"mood:{cluster_name}", response=in_window)
+                tag = " (non-verbal)" if in_window else ""
                 log(f"t={mind.total_steps:6d}  C={state['C']:.2f}  basin={state['Basin']:.2f}  "
                     f"[{cluster_name} pers={judged['persistence']:.2f}]  "
-                    f"cursor=({cursor_x:+.2f},{cursor_y:+.2f})  {symbolic_to_sym(line)}{tag}")
+                    f"\u25cf round={vis['roundness']:.2f} open={vis['openness']:.2f} speed={vis['speed']:.2f} "
+                    f"reg={vis['regularity']:.2f} sym={vis['symmetry']:.2f} hue={vis['hue']:.2f}{tag}")
 
                 # ---- autosave EVERY TICK, at explicit request -- run() only does this once at exit ----
                 save_blob(conn, "mind_state", mind.get_state())
+                save_blob(conn, "grounding_frame", mind.grounding_frame.tolist())
+                if hasattr(mind, "semantic_grounding_frame"):
+                    save_blob(conn, "semantic_grounding_frame", mind.semantic_grounding_frame.tolist())
                 save_blob(conn, LINE_USE_COUNT_KEY, dict(_LINE_USE_COUNT))
                 save_learned_grounding(conn, anchor_drift, axis_profile)
                 save_auto_concepts(conn, auto_concepts)
@@ -6859,6 +6320,7 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
                         if input_buf.strip():
                             pending_prompt = input_buf.strip()
                             prompt_topic_vec = embed_text(pending_prompt, _IDF, _DEFAULT_IDF)
+                            prompt_topic_vec = ground_input_embedding(mind, prompt_topic_vec)  # NEW: same grounding as run()
                             update_raw_corpus(conn, pending_prompt)  # persists into raw_prompt_corpus,
                             _BIGRAM, _UNIGRAM = build_transition_counts(load_raw_corpus(conn))  # same
                             # as run(): rebuild bigram/unigram tables immediately so THIS session's own
@@ -6879,44 +6341,198 @@ def kiba_cli(db_path=DB_PATH, tick_delay=0.5, prompt_ticks=15):
     curses.wrapper(_main)
 
 
+# ============================================ WEB GUI + MP4 RECORDING
+# At explicit request ("keep it in the main py"): a minimal Flask app living in this same file, rather
+# than a separate server module. Flask/PIL are imported lazily inside web_ui() so nothing about the
+# existing CLI/curses entry points requires them to be installed.
+def _render_visual_frame_image(f, phase, size=420):
+    """Renders one interpolated visual-state frame to a PIL Image, monochrome (black on white) to match
+    the minimalist web GUI rather than introducing color -- see state_to_visual_params for what each
+    parameter means. Same shape math as gubi_visual_viewer.html's canvas renderer, in Python, so the MP4
+    recording and the live viewer read identically."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (size, size), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    cx = cy = size / 2.0
+    jitter = 1 - f["regularity"]  # erratic path when low (regularity), smooth glide when high
+    drift_x = math.sin(phase * 1.3) * 26 * (0.2 + jitter) + math.sin(phase * 0.31) * 10
+    drift_y = math.cos(phase * 1.1) * 26 * (0.2 + jitter) + math.cos(phase * 0.47) * 10
+    cx += drift_x
+    cy += drift_y
+    base_r = 55 + (120 - 55) * f["openness"]              # contracted vs expanded form
+    lobes = round(3 + (9 - 3) * f["symmetry"])             # unstable/irregular vs stable/symmetric outline
+    roughness = (1 - f["roundness"]) * 0.55                # angular/jagged when roundness is low
+    asym = (1 - f["symmetry"]) * 0.35
+    n_points = 64
+    pts = []
+    for i in range(n_points + 1):
+        a = (i / n_points) * 2 * math.pi
+        lobe_wave = math.sin(a * lobes + phase * 0.6) * roughness
+        noise_wave = math.sin(a * 7.3 + phase * 2.1) * asym * 0.4
+        r = base_r * (1 + lobe_wave * 0.5 + noise_wave)
+        pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
+    # shade carries the hue signal without introducing color, to stay consistent with "white bg, black
+    # text" everywhere else in the app: darker fill = warmer/more positive, lighter gray = cooler/negative
+    shade = int(230 - 180 * max(0.0, min(1.0, f["hue"])))
+    shade = max(35, min(230, shade))
+    draw.polygon(pts, fill=(shade, shade, shade), outline=(0, 0, 0))
+    return img
+
+def render_frames_to_mp4(frames, out_path, fps=24, seconds_per_frame=0.35, size=420):
+    """Encodes a list of visual-param dicts (as logged by log_visual_frame) into an actual .mp4 file via
+    ffmpeg, fed raw RGB frames over stdin -- no intermediate PNG files, no extra Python video library."""
+    import subprocess
+    n = len(frames)
+    if n == 0:
+        return False
+    total_frames = max(1, int(n * seconds_per_frame * fps))
+    cmd = ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{size}x{size}",
+           "-r", str(fps), "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", out_path]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    keys = ("roundness", "openness", "speed", "regularity", "symmetry", "hue")
+    phase = 0.0
+    dt = 1.0 / fps
+    try:
+        for i in range(total_frames):
+            idx = (i / fps) / seconds_per_frame
+            i0 = int(idx) % n
+            i1 = (i0 + 1) % n
+            t = idx - int(idx)
+            f = {k: frames[i0].get(k, 0.5) + (frames[i1].get(k, 0.5) - frames[i0].get(k, 0.5)) * t for k in keys}
+            phase += dt * (0.3 + 1.4 * f["speed"])
+            img = _render_visual_frame_image(f, phase, size=size)
+            proc.stdin.write(img.tobytes())
+    finally:
+        proc.stdin.close()
+        proc.wait()
+    return proc.returncode == 0 and os.path.exists(out_path)
+
+_WEB_PAGE = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Gubi</title>
+<style>
+  html, body { margin:0; height:100%; background:#ffffff; color:#000000;
+               font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif; }
+  #wrap { max-width:560px; margin:0 auto; padding:60px 20px; display:flex; flex-direction:column;
+          align-items:center; gap:22px; }
+  h1 { font-size:15px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:#000; margin:0; }
+  form { width:100%; display:flex; gap:8px; }
+  input[type=text] { flex:1; border:1px solid #000; background:#fff; color:#000; padding:10px 12px;
+                      font-size:14px; outline:none; }
+  button { border:1px solid #000; background:#000; color:#fff; padding:10px 16px; font-size:13px;
+           cursor:pointer; }
+  button:disabled { opacity:0.4; cursor:default; }
+  video { width:420px; height:420px; border:1px solid #000; background:#fff; }
+  a { color:#000; }
+  #status { font-size:12px; color:#555; min-height:16px; }
+</style></head>
+<body><div id="wrap">
+  <h1>Gubi</h1>
+  <form id="f"><input id="p" type="text" placeholder="say something" autocomplete="off">
+    <button id="go" type="submit">ask</button></form>
+  <div id="status"></div>
+  <video id="v" controls autoplay loop></video>
+  <a id="dl" href="#" style="display:none; font-size:12px;">download mp4</a>
+</div>
+<script>
+const form = document.getElementById('f'), inp = document.getElementById('p'), go = document.getElementById('go');
+const status = document.getElementById('status'), video = document.getElementById('v'), dl = document.getElementById('dl');
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const prompt = inp.value.trim();
+  if (!prompt) return;
+  go.disabled = true;
+  status.textContent = 'thinking...';
+  try {
+    const res = await fetch('/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body: JSON.stringify({prompt})});
+    const data = await res.json();
+    if (data.error) { status.textContent = data.error; }
+    else {
+      video.src = data.video_url;
+      dl.href = data.video_url;
+      dl.style.display = 'inline';
+      status.textContent = '';
+    }
+  } catch (err) {
+    status.textContent = 'request failed';
+  }
+  go.disabled = false;
+};
+</script></body></html>"""
+
+def web_ui(host="127.0.0.1", port=5000, db_path=DB_PATH, record_dir="gubi_recordings"):
+    """Minimalist web GUI (white background, black text): a single text input, and Gubi's non-verbal
+    response rendered as a saved MP4 recording. Each request runs the real Mind (same run() used by the
+    CLI, so all routing/grounding/learning is identical), collects only the frames tagged response=True
+    from this call, and encodes them server-side via ffmpeg -- no browser recording, no webm/mp4
+    conversion step, just an actual .mp4 on disk that's also served back for playback."""
+    from flask import Flask, request, jsonify, send_from_directory
+    import json as _json
+
+    os.makedirs(record_dir, exist_ok=True)
+    app = Flask(__name__)
+
+    @app.route("/")
+    def index():
+        return _WEB_PAGE
+
+    @app.route("/ask", methods=["POST"])
+    def ask():
+        data = request.get_json(force=True) or {}
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            return jsonify(error="empty prompt"), 400
+        start_offset = os.path.getsize(VISUAL_LOG_PATH) if os.path.exists(VISUAL_LOG_PATH) else 0
+        try:
+            # small step counts -- the Mind's own state (and grounding frames) persist across requests via
+            # db_path, so each request only needs to top up and generate, never re-bootstrap from scratch
+            run(prompt=prompt, bootstrap_steps=200, topup_steps=20, gen_steps=40,
+                prompt_inject_steps=10, db_path=db_path)
+        except Exception as e:
+            return jsonify(error=f"generation failed: {e}"), 500
+        frames = []
+        with open(VISUAL_LOG_PATH, "r", encoding="utf-8") as f:
+            f.seek(start_offset)
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = _json.loads(line)
+                if rec.get("response"):
+                    frames.append(rec)
+        if not frames:
+            return jsonify(error="no response generated"), 500
+        fname = f"gubi_{int(time.time() * 1000)}.mp4"
+        out_path = os.path.join(record_dir, fname)
+        ok = render_frames_to_mp4(frames, out_path)
+        if not ok:
+            return jsonify(error="mp4 render failed (is ffmpeg installed?)"), 500
+        return jsonify(video_url=f"/recordings/{fname}", frame_count=len(frames))
+
+    @app.route("/recordings/<path:fname>")
+    def recordings(fname):
+        return send_from_directory(record_dir, fname)
+
+    print(f"--- Gubi web GUI: http://{host}:{port} (recordings saved to ./{record_dir}/) ---")
+    app.run(host=host, port=port)
+
+
 if __name__ == "__main__":
     # NEW: optional --branches N flag, e.g. `python3 geometric_voice_v8_mmi_scaled.py "prompt" --branches 45000`
     # -- kept separate from GEOMETRIC_VOICE_BRANCHES env var (both work; the flag takes precedence).
     # NEW: --cli launches the persistent Kiba terminal front end instead of a single one-shot prompt/answer.
+    # NEW: --web launches the minimalist Flask GUI (see web_ui) instead of either CLI front end.
     # NEW (at explicit request -- "make the CLI default without specified prompt"): no prompt text on the
     # command line at all -- nothing but the script name, or only --branches with no words after it --
     # now falls through to kiba_cli() too, same as explicit --cli, instead of run(prompt=None) (a single
     # one-shot batch of ambient generation that just exits). Passing an actual prompt string on the
     # command line still goes through run() exactly as before; --cli remains valid and equivalent to
     # omitting the prompt.
-    # NEW (bugfix -- notebook/kernel launches were polluting the prompt corpus): when this script runs
-    # inside Jupyter/IPython/Colab/Kaggle, the KERNEL's own launch arguments (typically
-    # "-f /path/to/kernel-xxxx.json") land in sys.argv, not anything the human typed. Previously these
-    # got silently joined into `prompt` and treated as a real one-shot prompt -- getting tokenized,
-    # embedded, persisted into raw_prompt_corpus, and folded into the bigram/transformer tables, so
-    # tokens like "-f" and JSON-path fragments would keep resurfacing in generation forever after,
-    # regardless of what the user actually asked. Two independent guards below: (1) detect a running
-    # ipykernel outright and skip argv parsing entirely; (2) even outside a detected kernel, never accept
-    # an arg that looks like a CLI flag ("-" prefix) or a filesystem path as prompt text -- a real prompt
-    # is prose, not "-f" or "/root/.local/share/jupyter/runtime/kernel-xxxx.json".
-    _in_notebook_kernel = "ipykernel" in sys.modules or "IPython" in sys.modules
-    _argv = sys.argv[1:] if not _in_notebook_kernel else []
-    # second guard: even if somehow not caught above, strip anything flag-shaped or path-shaped before
-    # it can ever become `prompt` text -- but never strip this script's OWN recognized flags ("--cli",
-    # "--branches"), or --branches would break the same way the bug it's fixing did.
-    _KNOWN_FLAGS = {"--cli", "--branches"}
-    def _is_cli_noise(tok):
-        if tok in _KNOWN_FLAGS:
-            return False
-        return tok.startswith("-") or "/" in tok or "\\" in tok or tok.endswith(".json")
-    _argv = [a for a in _argv if not _is_cli_noise(a)]
-    # NEW (bugfix -- notebook/papermill/piped runs crashing on curses): kiba_cli() needs a real
-    # controlling terminal (it calls curses.wrapper -> cbreak()/nocbreak(), which raise curses.error
-    # with no TTY attached). kiba_cli() itself now guards this and falls back to run(prompt=None), but
-    # skip straight to that fallback here too so a non-interactive run doesn't even try curses first.
-    _has_tty = sys.stdin.isatty() and sys.stdout.isatty()
-    if "--cli" in _argv:
-        kiba_cli() if _has_tty else run(prompt=None)
+    _argv = sys.argv[1:]
+    if "--web" in _argv:
+        web_ui()
+    elif "--cli" in _argv:
+        kiba_cli()
     else:
         _branches = None
         if "--branches" in _argv:
@@ -6925,6 +6541,6 @@ if __name__ == "__main__":
             _argv = _argv[:_i] + _argv[_i + 2:]
         prompt = " ".join(_argv) if _argv else None
         if prompt is None:
-            kiba_cli() if _has_tty else run(prompt=None)
+            kiba_cli()
         else:
             run(prompt=prompt, answer_branches=_branches)
