@@ -3099,6 +3099,23 @@ def _concept_how_it_works(mind, state, norm, rng, topic_vec=None, prompt_text=No
 # mechanism in this file already uses (_LANG_ARTICLES/_LANG_PREPS/_LANG_CONJ, STOPWORDS, etc.), just with a
 # different alphabet. The human's own prompts are still read in English (seed_phrases below, WH_TYPE_MAP,
 # STOPWORDS) -- only the model's generated half of the conversation is symbolic.
+# FIX (NameError: _LANG_NOUNS not defined): these five vocab sets were originally defined much later in
+# the file (right before class _LangGrammarState, in the "grammar-constrained decoding for Lang" section),
+# but SYMBOL_TAGS/CONCEPT_BANK/VOCAB below all need them immediately -- moved here, ahead of every first
+# use, so the module actually imports instead of dying on `SYMBOL_TAGS = sorted(_LANG_NOUNS)`.
+_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
+    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
+    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
+    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
+    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
+}
+_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
+             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
+             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
+_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
+_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
+_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
+
 SYMBOL_TABLE = {
     # core state
     "\u2022": "AFFIRM (true, present, confirmed)", "\u2014": "NEGATE (false, absent, rejected)",
@@ -4981,18 +4998,10 @@ ENTITY_LEXICAL_BOOST = 1.8  # direct probability multiplier when entity_word its
 # back to back, or a sentence that opens on a bare connector. Deliberately conservative: this never tries
 # to enforce full syntax (agreement, word order), only rules out combinations no grammatical Spanish
 # sentence would ever contain.
-_LANG_NOUNS = {  # symbol-algebra open class: axis/state/concept tags (see SYMBOL_TAGS below)
-    "COH", "INT", "NRG", "AGN", "GRD", "PRD", "MEM", "SPR", "PUL",
-    "SELF", "GUBI", "PROTOGEN", "CODE", "VOICE", "ARCH", "NODE", "VECTOR", "MATRIX", "LAYER",
-    "NOW", "MIND", "PROOF", "EXPERIENCE", "DOUBT", "WHY", "GEN", "LANG", "HUMAN", "TIME",
-    "EXPERIMENT", "WORD", "STATE", "CHOICE", "PROB", "16",
-}
-_LANG_OPS = {":", "\u2192", "\u2190", "\u2194", "\u22a5", "\u2225", "\u2282", "\u2283", "\u2229", "\u222a",
-             "\u2191", "\u2193", "\u2197", "\u2198", "\u21bb", "\u21ba", "\u00d7", "\u2026",
-             "\u2234", "\u2235", "\u00b1"}  # binary relation/change/reasoning symbols -- need a term on both sides
-_LANG_CONN = {"&", "\u2228", "|"}           # clause connectors -- need a fresh clause after
-_LANG_MOD = {"\u00b0", "\u00b7", "\u25cf", "\u221e", "~"}   # modifiers -- attach after a term, nothing required next
-_LANG_UNARY = {"\u2022", "\u2014", "\u2248", "?", "\u2205", "!", "\u00ac"}  # core-state / negation symbols
+# NOTE: the _LANG_NOUNS/_LANG_OPS/_LANG_CONN/_LANG_MOD/_LANG_UNARY vocab sets this FSM (and SYMBOL_TABLE/
+# SYMBOL_TAGS/CONCEPT_BANK, all defined earlier in the file) depend on now live further up, right before
+# SYMBOL_TABLE -- moved there so they're defined before anything references them (see that comment for
+# why they were originally mis-ordered).
 
 class _LangGrammarState:
     START, NOUN, OP, CONN, MOD, UNARY = range(6)
@@ -5845,7 +5854,22 @@ def init_db(path=DB_PATH):
 
 def load_blob(conn, key):
     row = conn.execute("SELECT value FROM blobs WHERE key=?", (key,)).fetchone()
-    return pickle.loads(row[0]) if row else None
+    if not row:
+        return None
+    # FIX (RuntimeError: Attempting to deserialize object on a CUDA device...): plain pickle.loads
+    # on bytes that contain torch tensors (e.g. GrammarCheckerLM's state_dict, saved via save_blob
+    # below rather than save_blob_large) goes through torch's OWN tensor-rebuild hooks during
+    # unpickling, which validate/restore the ORIGINAL device the tensor was saved from -- entirely
+    # independent of any map_location we pass to torch.load elsewhere in this file. A blob saved on a
+    # CUDA machine and loaded here on a CPU-only one hits that same error a second time, at a
+    # completely different call site than load_blob_large's own (already-fixed) torch.load call.
+    # torch.load also transparently reads ordinary pickle-format bytes (pickle IS the underlying
+    # format; torch.load just adds device-aware storage handling on top), so wrapping the raw bytes
+    # in BytesIO and going through torch.load(..., map_location="cpu") is a safe, behavior-preserving
+    # replacement for pickle.loads on every blob this function has ever been used for, not just ones
+    # that happen to contain tensors.
+    import io
+    return torch.load(io.BytesIO(row[0]), map_location="cpu")
 
 def save_blob(conn, key, obj):
     conn.execute("INSERT OR REPLACE INTO blobs (key, value) VALUES (?, ?)", (key, pickle.dumps(obj)))
@@ -5893,7 +5917,13 @@ def load_blob_large(conn, key):
     raw = row[0]
     if raw.startswith(_DISK_MARKER_PREFIX):
         path = raw[len(_DISK_MARKER_PREFIX):].decode("utf-8")
-        return torch.load(path, map_location=DEVICE)
+        # FIX (RuntimeError: Attempting to deserialize object on a CUDA device but
+        # torch.cuda.is_available() is False): map_location=DEVICE alone can still trip torch's
+        # legacy storage-deserialization path when the checkpoint was originally saved from a CUDA
+        # session and this process has no GPU at all -- always land the raw state_dict on CPU first
+        # (safe regardless of where it was saved), then let each model's own `.to(DEVICE)` call
+        # (already done at every load_state_dict call site) move it wherever this process needs it.
+        return torch.load(path, map_location="cpu")
     return pickle.loads(raw)
 
 
