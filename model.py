@@ -5868,11 +5868,24 @@ def load_blob(conn, key):
     # in BytesIO and going through torch.load(..., map_location="cpu") is a safe, behavior-preserving
     # replacement for pickle.loads on every blob this function has ever been used for, not just ones
     # that happen to contain tensors.
+    # FIX (UnpicklingError under weights_only=True): PyTorch 2.6 changed torch.load's default from
+    # weights_only=False to weights_only=True, which refuses to unpickle anything but a narrow
+    # allow-list of tensor-ish types -- but most of what this function loads is plain Python state
+    # (Counter, dict, list, numpy arrays: want_ema, prompt_corpus, axis_profile, etc.), not weights at
+    # all. weights_only=False restores the old (and here, correct) behavior -- safe because this is
+    # always our own locally-written mind.db, never an untrusted download.
     import io
-    return torch.load(io.BytesIO(row[0]), map_location="cpu")
+    try:
+        return torch.load(io.BytesIO(row[0]), map_location="cpu", weights_only=False)
+    except RuntimeError:
+        # blob predates the switch to torch.save in save_blob below; it's plain pickle
+        return pickle.loads(row[0])
 
 def save_blob(conn, key, obj):
-    conn.execute("INSERT OR REPLACE INTO blobs (key, value) VALUES (?, ?)", (key, pickle.dumps(obj)))
+    import io
+    buf = io.BytesIO()
+    torch.save(obj, buf)
+    conn.execute("INSERT OR REPLACE INTO blobs (key, value) VALUES (?, ?)", (key, buf.getvalue()))
     conn.commit()
 
 # FIX (DataError: string or blob too big): SQLite refuses to bind any single blob/string parameter
@@ -5923,7 +5936,11 @@ def load_blob_large(conn, key):
         # session and this process has no GPU at all -- always land the raw state_dict on CPU first
         # (safe regardless of where it was saved), then let each model's own `.to(DEVICE)` call
         # (already done at every load_state_dict call site) move it wherever this process needs it.
-        return torch.load(path, map_location="cpu")
+        # ALSO (UnpicklingError under weights_only=True, PyTorch 2.6+): these checkpoints bundle plain
+        # Python objects (word2id dict, id2word list, trained_up_to_n int, seed_fingerprint str)
+        # alongside the tensor state_dict -- weights_only=True's allow-list rejects those, so it's
+        # disabled here too, same trusted-local-file reasoning as load_blob's identical fix.
+        return torch.load(path, map_location="cpu", weights_only=False)
     return pickle.loads(raw)
 
 
